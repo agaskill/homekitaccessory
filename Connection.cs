@@ -20,6 +20,16 @@ namespace HomeKitAccessory
         private Dictionary<AccessoryCharacteristicId, IDisposable> subscriptions;
         private object responseLock;
 
+        public Connection(Server server, Stream client)
+        {
+            this.server = server;
+            this.client = client;
+
+            pendingNotifications = new Dictionary<AccessoryCharacteristicId, object>();
+            subscriptions = new Dictionary<AccessoryCharacteristicId, IDisposable>();
+            responseLock = new object();
+        }
+
         private void CharacteristicChanged(object sender, CharacteristicChangedEventArgs e)
         {
             var characteristic = (Characteristic)sender;
