@@ -29,5 +29,10 @@ namespace HomeKitAccessory
 
         [JsonProperty("remote")]
         public bool? Remote {get;set;}
+
+        public static explicit operator AccessoryCharacteristicId(CharacteristicWriteItem item)
+        {
+            return new AccessoryCharacteristicId(item.AccessoryId, item.InstanceId);
+        }
     }
 }

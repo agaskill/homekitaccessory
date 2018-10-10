@@ -30,18 +30,35 @@ namespace HomeKitAccessory
             responseLock = new object();
         }
 
-        private void CharacteristicChanged(object sender, CharacteristicChangedEventArgs e)
+        private void CharacteristicChanged(AccessoryCharacteristicId id, object value)
         {
-            var characteristic = (Characteristic)sender;
-            var id = new AccessoryCharacteristicId(
-                characteristic.Accessory.Id,
-                 characteristic.InstanceId);
             lock (pendingNotifications)
              {
-                pendingNotifications[id] = e.Value;
+                pendingNotifications[id] = value;
                 if (notificationTimer == null) {
                     notificationTimer = new Timer(OnNotificationTimer, null, 250, Timeout.Infinite);
                 }
+            }
+        }
+
+        private class Observer : IObserver<object>
+        {
+            private Connection connection;
+            private AccessoryCharacteristicId id;
+
+            public Observer(Connection connection, AccessoryCharacteristicId id)
+            {
+                this.connection = connection;
+                this.id = id;
+            }
+
+            public void OnCompleted() {}
+
+            public void OnError(Exception error) {}
+
+            public void OnNext(object value)
+            {
+                connection.CharacteristicChanged(id, value);
             }
         }
 
@@ -80,7 +97,7 @@ namespace HomeKitAccessory
             if (characteristic.Write != null) {
                 perms.Add("pw");
             }
-            if (characteristic.Subscribe != null) {
+            if (characteristic.Observable != null) {
                 perms.Add("ev");
             }
             return perms;
@@ -93,8 +110,14 @@ namespace HomeKitAccessory
                     return "arcdegrees";
                 case CharacteristicUnit.CELSIUS:
                     return "celsius";
+                case CharacteristicUnit.LUX:
+                    return "lux";
+                case CharacteristicUnit.PERCENTAGE:
+                    return "percentage";
+                case CharacteristicUnit.SECONDS:
+                    return "seconds";
             }
-            throw new ArgumentOutOfRangeException(nameof(unit));
+            throw new ArgumentException(nameof(unit));
         }
 
         private void PopulateMeta(Characteristic characteristic, JObject result)
@@ -144,17 +167,27 @@ namespace HomeKitAccessory
                     }));
                 }
             }
+
+            if (tasks.Count == 0) {
+                tasks.Add(Task.CompletedTask);
+            }
+
             Task.WhenAll(tasks).ContinueWith(allReads => {
                 string statusLine;
-                if (characteristics.Any(c => (int)c["status"] != 0)) {
-                    statusLine = "HTTP/1.1 207 Multi-Status\r\n";
-                }
-                else {
+                if (characteristics.All(c => (int)c["status"] == 0)) {
                     statusLine = "HTTP/1.1 200 OK\r\n";
                     foreach (JObject c in characteristics) {
                         c.Remove("status");
                     }
                 }
+                else if (characteristics.Count == 1) {
+                    statusLine = "HTTP/1.1 400 Bad Request";
+                    //TODO: This should be specific to status type
+                }
+                else {
+                    statusLine = "HTTP/1.1 207 Multi-Status\r\n";
+                }
+
                 var body = Encoding.UTF8.GetBytes(
                     new JObject() {
                         {"characteristics", characteristics}
@@ -163,7 +196,7 @@ namespace HomeKitAccessory
                     statusLine
                     + "Content-Type: application/hap+json\r\n"
                     + "Content-Length: " + body.Length + "\r\n"
-                    + "\r\n");
+                    + "Date: " + DateTime.UtcNow.ToString("r") + "\r\n\r\n");
                 lock (responseLock) {
                     client.Write(header);
                     client.Write(body);
@@ -188,6 +221,9 @@ namespace HomeKitAccessory
                 else if (characteristic.Write == null && item.Value != null) {
                     result["status"] = -70404;
                 }
+                else if (characteristic.Observable == null && item.Events.HasValue) {
+                    result["status"] = -70406;
+                }
                 else {
                     if (item.Value != null) {
                         try {
@@ -207,7 +243,32 @@ namespace HomeKitAccessory
                             result["status"] = -70410;
                         }
                     }
+                    else
+                    {
+                        result["status"] = 0;
+                    }
+
+                    if (item.Events.HasValue) {
+                        var itemid = (AccessoryCharacteristicId)item;
+                        if (item.Events.Value) {
+                            if (!subscriptions.ContainsKey(itemid))
+                            {
+                                subscriptions[itemid] = characteristic.Observable.Subscribe(new Observer(this, itemid));
+                            }
+                        }
+                        else {
+                            if (subscriptions.TryGetValue(itemid, out IDisposable disposable))
+                            {
+                                subscriptions.Remove(itemid);
+                                disposable.Dispose();
+                            }
+                        }
+                    }
                 }
+            }
+
+            if (tasks.Count == 0) {
+                tasks.Add(Task.CompletedTask);
             }
 
             Task.WhenAll(tasks).ContinueWith(allWrites => {
@@ -218,7 +279,7 @@ namespace HomeKitAccessory
 
                 string header;
                 if (characteristics.All(c => (int)c["status"] == 0)) {
-                    header = "HTTP/1.1 204 No Content\r\n\r\n";
+                    header = "HTTP/1.1 204 No Content\r\n";
                     body = null;
                 }
                 else {
@@ -228,9 +289,11 @@ namespace HomeKitAccessory
                     else {
                         header = "HTTP/1.1 400 Bad Request\r\n";
                     }
-                    header += "Content-Type: application/hap+json\r\n\r\n"
-                        + "Content-Length: " + body.Length + "\r\n\r\n";
+                    header += "Content-Type: application/hap+json\r\n"
+                        + "Content-Length: " + body.Length + "\r\n";
                 }
+
+                header += "Date: " + DateTime.UtcNow.ToString("r") + "\r\n\r\n";
 
                 lock (responseLock) {
                     client.Write(Encoding.UTF8.GetBytes(header));
@@ -279,7 +342,8 @@ namespace HomeKitAccessory
                 "EVENT/1.0 200 OK\r\n" +
                 "Content-Type: application/hap+json\r\n" +
                 "Content-Length: " + body.Length + "\r\n" +
-                "\r\n");
+                "Date: " + DateTime.UtcNow.ToString("r") +
+                "\r\n\r\n");
                 
             lock (responseLock) {
                 client.Write(header);

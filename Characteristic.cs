@@ -14,7 +14,8 @@ namespace HomeKitAccessory
 
         public Func<Task<object>> Read {get; private set;}
         public Func<object, Task> Write {get; private set;}
-        public Func<Action<object>, IDisposable> Subscribe {get; private set;}
+
+        public IObservable<object> Observable {get; private set;}
 
         public Characteristic(
             Accessory accessory,
@@ -22,14 +23,14 @@ namespace HomeKitAccessory
             Guid type,
             Func<Task<object>> read,
             Func<object, Task> write,
-            Func<Action<object>, IDisposable> subscribe)
+            IObservable<object> observable)
         {
             Accessory = accessory;
             InstanceId = instanceId;
             Type = type;
             Read = read;
             Write = write;
-            Subscribe = subscribe;
+            Observable = observable;
         }
     }
 
