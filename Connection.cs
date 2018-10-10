@@ -168,10 +168,6 @@ namespace HomeKitAccessory
                 }
             }
 
-            if (tasks.Count == 0) {
-                tasks.Add(Task.CompletedTask);
-            }
-
             Task.WhenAll(tasks).ContinueWith(allReads => {
                 string statusLine;
                 if (characteristics.All(c => (int)c["status"] == 0)) {
@@ -265,10 +261,6 @@ namespace HomeKitAccessory
                         }
                     }
                 }
-            }
-
-            if (tasks.Count == 0) {
-                tasks.Add(Task.CompletedTask);
             }
 
             Task.WhenAll(tasks).ContinueWith(allWrites => {
