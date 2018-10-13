@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
 namespace HomeKitAccessory
@@ -21,6 +22,8 @@ namespace HomeKitAccessory
             Accessory accessory,
             int instanceId,
             Guid type,
+            CharacteristicFormat format,
+            CharacteristicUnit? unit,
             Func<Task<object>> read,
             Func<object, Task> write,
             IObservable<object> observable)
@@ -28,6 +31,8 @@ namespace HomeKitAccessory
             Accessory = accessory;
             InstanceId = instanceId;
             Type = type;
+            Format = format;
+            Unit = unit;
             Read = read;
             Write = write;
             Observable = observable;

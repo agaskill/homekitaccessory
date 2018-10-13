@@ -1,4 +1,5 @@
 using System;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
 namespace HomeKitAccessory
@@ -12,6 +13,12 @@ namespace HomeKitAccessory
         public virtual void PopulateMeta(JObject obj)
         {
             obj["format"] = Format;
+        }
+
+        public virtual void WriteMeta(JsonWriter writer)
+        {
+            writer.WritePropertyName("format");
+            writer.WritePropertyName(Format);
         }
     }
 
@@ -94,6 +101,16 @@ namespace HomeKitAccessory
                 obj["maxLen"] = MaxLen;
         }
 
+        public override void WriteMeta(JsonWriter writer)
+        {
+            base.WriteMeta(writer);
+            if (MaxLen.HasValue)
+            {
+                writer.WritePropertyName("maxLen");
+                writer.WriteValue(MaxLen.Value);
+            }
+        }
+
         public int? MaxLen {get; private set;}
 
         public StringFormat(int? maxLen)
@@ -123,6 +140,26 @@ namespace HomeKitAccessory
                 obj["maxValue"] = MaxValue.Value;
             if (MinStep.HasValue)
                 obj["minStep"] = MinStep.Value;
+        }
+
+        public override void WriteMeta(JsonWriter writer)
+        {
+            base.WriteMeta(writer);
+            if (MinValue.HasValue)
+            {
+                writer.WritePropertyName("minValue");
+                writer.WriteValue(MinValue.Value);
+            }
+            if (MaxValue.HasValue)
+            {
+                writer.WritePropertyName("maxValue");
+                writer.WriteValue(MaxValue.Value);
+            }
+            if (MinStep.HasValue)
+            {
+                writer.WritePropertyName("minStep");
+                writer.WriteValue(MinStep.Value);
+            }
         }
 
         public int? MinValue {get; private set;}
@@ -158,6 +195,26 @@ namespace HomeKitAccessory
                 obj["maxValue"] = MaxValue.Value;
             if (MinStep.HasValue)
                 obj["minStep"] = MinStep.Value;
+        }
+
+        public override void WriteMeta(JsonWriter writer)
+        {
+            base.WriteMeta(writer);
+            if (MinValue.HasValue)
+            {
+                writer.WritePropertyName("minValue");
+                writer.WriteValue(MinValue.Value);
+            }
+            if (MaxValue.HasValue)
+            {
+                writer.WritePropertyName("maxValue");
+                writer.WriteValue(MaxValue.Value);
+            }
+            if (MinStep.HasValue)
+            {
+                writer.WritePropertyName("minStep");
+                writer.WriteValue(MinStep.Value);
+            }
         }
 
         public double? MinValue {get; private set;}

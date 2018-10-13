@@ -66,77 +66,22 @@ namespace HomeKitAccessory
         {
             var accessory = server.Accessories.Find(a => a.Id == accessoryId);
             if (accessory == null) return null;
-            var characteristic = accessory.Characteristics.Find(c => c.InstanceId == instanceId);
+            var characteristic = accessory.Characteristics.FirstOrDefault(c => c.InstanceId == instanceId);
             return characteristic;
         }
 
-        private JObject CharacteristicError(AccessoryCharacteristicId id, int status)
+        private Task<HapResponse> HandleCharacteristicReadRequest(CharacteristicReadRequest request)
         {
-            return new JObject() {
-                {"aid", id.AccessoryId},
-                {"iid", id.InstanceId},
-                {"status", status}
-            };
-        }
-
-        private static string FormatType(Guid type)
-        {
-            var typeString = type.ToString();
-            if (typeString.EndsWith("-0000-1000-8000-0026BB765291")) {
-                typeString = typeString.Substring(0, 8).TrimStart('0');
-            }
-            return typeString;
-        }
-
-        private static JArray FormatPerms(Characteristic characteristic)
-        {
-            var perms = new JArray();
-            if (characteristic.Read != null) {
-                perms.Add("pr");
-            }
-            if (characteristic.Write != null) {
-                perms.Add("pw");
-            }
-            if (characteristic.Observable != null) {
-                perms.Add("ev");
-            }
-            return perms;
-        }
-
-        private string FormatUnit(CharacteristicUnit unit)
-        {
-            switch (unit) {
-                case CharacteristicUnit.ARCDEGREES:
-                    return "arcdegrees";
-                case CharacteristicUnit.CELSIUS:
-                    return "celsius";
-                case CharacteristicUnit.LUX:
-                    return "lux";
-                case CharacteristicUnit.PERCENTAGE:
-                    return "percentage";
-                case CharacteristicUnit.SECONDS:
-                    return "seconds";
-            }
-            throw new ArgumentException(nameof(unit));
-        }
-
-        private void PopulateMeta(Characteristic characteristic, JObject result)
-        {
-            characteristic.Format.PopulateMeta(result);
-            if (characteristic.Unit.HasValue)
-                result["unit"] = FormatUnit(characteristic.Unit.Value);
-        }
-
-        private void HandleCharacteristicReadRequest(CharacteristicReadRequest request)
-        {
-            var characteristics = new JArray();
             var tasks = new List<Task>();
+            var results = new JArray();
+
             foreach (var id in request.Ids) {
+                var characteristic = FindCharacteristic(id.AccessoryId, id.InstanceId);
                 var result = new JObject();
-                characteristics.Add(result);
                 result["aid"] = id.AccessoryId;
                 result["iid"] = id.InstanceId;
-                var characteristic = FindCharacteristic(id.AccessoryId, id.InstanceId);
+                results.Add(result);
+
                 if (characteristic == null) {
                     result["status"] = -70409;
                 } 
@@ -145,16 +90,16 @@ namespace HomeKitAccessory
                 }
                 else {
                     if (request.IncludeType) {
-                        result["type"] = FormatType(characteristic.Type);
+                        result["type"] = HapTypeConverter.Format(characteristic.Type);
                     }
                     if (request.IncludePerms) {
-                        result["perms"] = FormatPerms(characteristic);
+                        result["perms"] = CharacteristicConverter.FormatPerms(characteristic);
                     }
-                    if (request.IncludeEvent) {
+                    if (request.IncludeEvent && characteristic.Observable != null) {
                         result["ev"] = subscriptions.ContainsKey(id);
                     }
                     if (request.IncludeMeta) {
-                        PopulateMeta(characteristic, result);
+                        CharacteristicConverter.PopulateMeta(characteristic, result);
                     }
                     tasks.Add(characteristic.Read().ContinueWith(task => {
                         if (task.IsFaulted) {
@@ -162,32 +107,47 @@ namespace HomeKitAccessory
                         }
                         else {
                             result["status"] = 0;
-                            result["value"] = JToken.FromObject(task.Result);
+                            result["value"] =  JToken.FromObject(task.Result);
                         }
                     }));
                 }
             }
 
-            Task.WhenAll(tasks).ContinueWith(allReads => {
-                string statusLine;
-                if (characteristics.All(c => (int)c["status"] == 0)) {
-                    statusLine = "HTTP/1.1 200 OK\r\n";
-                    foreach (JObject c in characteristics) {
-                        c.Remove("status");
-                    }
+            return Task.WhenAll(tasks).ContinueWith(allReads => {
+                var response = new HapResponse();
+                var includeStatus = results.Any(x => (int)x["status"] != 0);
+                if (!includeStatus)
+                {
+                    response.Status = 200;
                 }
-                else if (characteristics.Count == 1) {
-                    statusLine = "HTTP/1.1 400 Bad Request";
-                    //TODO: This should be specific to status type
+                else if (results.Count == 1)
+                {
+                    response.Status = 400;
                 }
-                else {
-                    statusLine = "HTTP/1.1 207 Multi-Status\r\n";
+                else
+                {
+                    response.Status = 207;
                 }
 
-                var body = Encoding.UTF8.GetBytes(
-                    new JObject() {
-                        {"characteristics", characteristics}
-                    }.ToString());
+                response.Body = new JObject() {
+                    {"characteristics", results}
+                };
+
+                return response;
+            });
+
+            /*
+            
+                var body = Serialize(
+                    new { characteristics },
+                    new CharacteristicConverter() {
+                        IncludeAccessoryId = true,
+                        IncludeMeta = request.IncludeMeta,
+                        IncludePerms = request.IncludePerms,
+                        IncludeType = request.IncludeType,
+                        CurrentEvents = request.IncludeEvent ? subscriptions.Keys.ToHashSet() : null
+                    });
+
                 var header = Encoding.UTF8.GetBytes(
                     statusLine
                     + "Content-Type: application/hap+json\r\n"
@@ -197,10 +157,11 @@ namespace HomeKitAccessory
                     client.Write(header);
                     client.Write(body);
                 }
-            });
+                
+                 */
         }
 
-        private void HandleCharacteristicWriteRequest(CharacteristicWriteRequest request)
+        private Task<HapResponse> HandleCharacteristicWriteRequest(CharacteristicWriteRequest request)
         {
             var characteristics = new JArray();
             var tasks = new List<Task>();
@@ -263,36 +224,24 @@ namespace HomeKitAccessory
                 }
             }
 
-            Task.WhenAll(tasks).ContinueWith(allWrites => {
-                var body = Encoding.UTF8.GetBytes(
-                    new JObject() {
-                        {"characteristics", characteristics}
-                    }.ToString());
-
-                string header;
+            return Task.WhenAll(tasks).ContinueWith(allWrites => {
+                var response = new HapResponse();
+                
                 if (characteristics.All(c => (int)c["status"] == 0)) {
-                    header = "HTTP/1.1 204 No Content\r\n";
-                    body = null;
+                    response.Status = 204;
                 }
                 else {
+                    response.Body = new JObject() {
+                        {"characteristics", characteristics}
+                    };
                     if (request.Characteristics.Count > 1) {
-                        header = "HTTP/1.1 207 Multi-Status\r\n";
+                        response.Status = 207;
                     }
                     else {
-                        header = "HTTP/1.1 400 Bad Request\r\n";
-                    }
-                    header += "Content-Type: application/hap+json\r\n"
-                        + "Content-Length: " + body.Length + "\r\n";
-                }
-
-                header += "Date: " + DateTime.UtcNow.ToString("r") + "\r\n\r\n";
-
-                lock (responseLock) {
-                    client.Write(Encoding.UTF8.GetBytes(header));
-                    if (body != null) {
-                        client.Write(body);
+                        response.Status = 400;
                     }
                 }
+                return response;
             });
         }
 
@@ -340,6 +289,29 @@ namespace HomeKitAccessory
             lock (responseLock) {
                 client.Write(header);
                 client.Write(body);
+            }
+        }
+
+        private void SendResponse(HapResponse response)
+        {
+            byte[] body;
+            if (response.Body == null) {
+                body = null;
+            }
+            else {
+                body = Encoding.UTF8.GetBytes(response.Body.ToString());
+            }
+
+            var header = "HTTP/1.1 " + response.Status + "\r\n";
+            if (body != null) {
+                header += "Content-Type: application/hap+json\r\nContent-Length: " + body.Length + "\r\n";
+            }
+            header += "\r\n";
+
+            lock (responseLock) {
+                client.Write(Encoding.UTF8.GetBytes(header));
+                if (body != null)
+                    client.Write(body);
             }
         }
 
