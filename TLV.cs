@@ -63,6 +63,11 @@ namespace HomeKitAccessory
             } while (remaining > 0);
         }
 
+        public static List<TLV> Deserialize(byte[] data)
+        {
+            return Deserialize(new MemoryStream(data));
+        }
+
         public static List<TLV> Deserialize(Stream stream)
         {
             var tlvs = new List<TLV>();
