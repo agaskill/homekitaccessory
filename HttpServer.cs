@@ -8,6 +8,7 @@ namespace HomeKitAccessory
     using System.Text;
     using System.Threading;
     using System.Threading.Tasks;
+    using Microsoft.Owin;
     using Newtonsoft.Json.Linq;
     using AppFunc = System.Func<System.Collections.Generic.IDictionary<string, object>, System.Threading.Tasks.Task>;
 
@@ -16,11 +17,11 @@ namespace HomeKitAccessory
         private volatile bool running;
         TcpListener tcpServer;
 
-        private Func<AppFunc> appFuncFactory;
+        private Func<Action<JObject>, OwinMiddleware> middlewareFactory;
 
-        public HttpServer(Func<AppFunc> appFuncFactory)
+        public HttpServer(Func<Action<JObject>, OwinMiddleware> middlewareFactory)
         {
-            this.appFuncFactory = appFuncFactory;
+            this.middlewareFactory = middlewareFactory;
         }
 
         public async Task Listen(int port)
@@ -31,18 +32,13 @@ namespace HomeKitAccessory
 
             while (running) {
                 var client = await tcpServer.AcceptTcpClientAsync();
-                var clientThread = new Thread(ClientThread);
-                clientThread.Start(new Connection {
-                    appFunc = appFuncFactory(),
-                    client = client
-                });
+                Task.Run(() => HandleClient(client, middlewareFactory(OnNotification)));
             }
         }
 
-        class Connection
+        private void OnNotification(JObject data)
         {
-            public AppFunc appFunc;
-            public TcpClient client;
+
         }
 
         public void Stop()
@@ -51,21 +47,7 @@ namespace HomeKitAccessory
             tcpServer.Stop();
         }
 
-        private void ClientThread(object state)
-        {
-            var connection = (Connection)state;
-            try
-            {
-                HandleClient(connection.client, connection.appFunc);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine(ex);
-            }
-            connection.client.Dispose();
-        }
-
-        private void HandleClient(TcpClient client, AppFunc appFunc)
+        private async Task HandleClient(TcpClient client, OwinMiddleware middleware)
         {
             Console.WriteLine("Connection from {0}", client.Client.RemoteEndPoint);
             var stream = client.GetStream();
@@ -73,7 +55,7 @@ namespace HomeKitAccessory
             var pos = 0;
             for(;;)
             {
-                var readlen = stream.Read(buffer, pos, buffer.Length - pos);
+                var readlen = await stream.ReadAsync(buffer, pos, buffer.Length - pos);
                 if (readlen == 0) break;
                 Console.WriteLine("Read {0} bytes from client", readlen);
                 pos += readlen;
@@ -90,22 +72,20 @@ namespace HomeKitAccessory
                         var requestMethod = requestLine[0];
                         var url = new Uri(requestLine[1]);
                         var requestProtocol = requestLine[2];
-                        var env = new Dictionary<string,object>();
-                        var requestHeaders = new Dictionary<string,string[]>(StringComparer.OrdinalIgnoreCase);
+                        var ctx = new OwinContext();
                         var responseBody = new MemoryStream();
-                        var responseHeaders = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
-                        env["owin.RequestScheme"] = "http";
-                        env["owin.RequestMethod"] = requestMethod;
-                        env["owin.RequestPath"] = url.AbsolutePath;
-                        env["owin.RequestPathBase"] = string.Empty;
-                        env["owin.RequestProtocol"] = requestProtocol;
-                        env["owin.RequestQueryString"] = url.Query;
-                        env["owin.RequestHeaders"] = requestHeaders;
-                        env["owin.ResponseBody"] = responseBody;
-                        env["owin.ResponseHeaders"] = responseHeaders;
-                        env["owin.CallCancelled"] = new CancellationToken();
-                        env["owin.Version"] = "1.0";
-                        responseHeaders["Server"] = new[] { "EventedHttpServer" };
+                        ctx.Request.Scheme = "http";
+                        ctx.Request.Method = requestMethod;
+                        ctx.Request.Path = new PathString(url.AbsolutePath);
+                        ctx.Request.PathBase = new PathString();
+                        ctx.Request.Protocol = requestProtocol;
+                        ctx.Request.QueryString = string.IsNullOrEmpty(url.Query) ?
+                            new QueryString() :
+                            new QueryString(url.Query.Substring(1));
+                        ctx.Response.Body = responseBody;
+                        ctx.Request.CallCancelled = new CancellationToken();
+                        ctx.Response.Headers.Append("Server", "EventedHttpServer");
+
                         var headerLine = reader.ReadLine();
                         int contentLength = 0;
                         while (!string.IsNullOrEmpty(headerLine)) {
@@ -116,12 +96,7 @@ namespace HomeKitAccessory
                             if (StringComparer.OrdinalIgnoreCase.Equals(headerName, "Content-Length")) {
                                 contentLength = int.Parse(headerValue);
                             }
-                            if (requestHeaders.TryGetValue(headerName, out string[] headerValues)) {
-                                headerValues = headerValues.Append(headerValue);
-                            } else {
-                                headerValues = new[] { headerValue };
-                            }
-                            requestHeaders[headerName] = headerValues;
+                            ctx.Request.Headers.Append(headerName, headerValue);
                             headerLine = reader.ReadLine();
                         }
 
@@ -137,44 +112,42 @@ namespace HomeKitAccessory
                                 if (readlen == 0) throw new EndOfStreamException();
                                 contentLength -= readlen;
                             }
-                            env["owin.RequestBody"] = new MemoryStream(body);
+                            ctx.Request.Body = new MemoryStream(body);
                         } else {
                             Console.WriteLine("No body content");
-                            env["owin.RequestBody"] = Stream.Null;
+                            ctx.Request.Body = Stream.Null;
                         }
 
                         Console.WriteLine("Calling app function");
                         try
                         {
-                            appFunc(env).Wait();
+                            await middleware.Invoke(ctx);
                             Console.WriteLine("App function complete");
                         }
                         catch (Exception ex)
                         {
                             Console.WriteLine(ex);
-                            env["owin.ResponseStatusCode"] = 500;
-                            env["owin.ResponseReasonPhrase"] = ex.Message;
+                            ctx.Response.StatusCode = 500;
+                            ctx.Response.ReasonPhrase = ex.Message;
                             responseBody = new MemoryStream(Encoding.UTF8.GetBytes(ex.ToString()));
-                            responseHeaders["Content-Length"] = new[] { responseBody.Length.ToString() };
-                            responseHeaders["Content-Type"] = new[] { "text/plain" };
+                            ctx.Response.ContentLength = responseBody.Length;
+                            ctx.Response.ContentType = "text/plain";
                         }
 
-                        if (!env.TryGetValue("owin.ResponseStatusCode", out object responseStatusCode))
-                            responseStatusCode = 200;
+                        var ms = new MemoryStream();
+                        var rw = new StreamWriter(ms);
 
-                        var rw = new StreamWriter(new BufferedStream(stream));
+                        var responseProtocol = ctx.Response.Protocol ?? ctx.Request.Protocol;
 
-                        if (!env.TryGetValue("owin.ResponseProtocol", out object responseProtocol))
-                            responseProtocol = env["owin.RequestProtocol"];
-                        rw.Write((string)responseProtocol);
+                        rw.Write(ctx.Response.Protocol ?? ctx.Request.Protocol);
                         rw.Write(" ");
-                        rw.Write((int)responseStatusCode);
-                        if (env.TryGetValue("owin.ResponseReasonPhrase", out object reasonPhrase)) {
+                        rw.Write(ctx.Response.StatusCode);
+                        if (!string.IsNullOrWhiteSpace(ctx.Response.ReasonPhrase)) {
                             rw.Write(" ");
-                            rw.Write((string)reasonPhrase);
+                            rw.Write(ctx.Response.ReasonPhrase);
                         }
                         rw.WriteLine();
-                        foreach (var headerkv in responseHeaders)
+                        foreach (var headerkv in ctx.Response.Headers)
                         {
                             foreach (var headerValue in headerkv.Value) {
                                 rw.Write(headerkv.Key);
@@ -186,9 +159,13 @@ namespace HomeKitAccessory
 
                         rw.Flush();
 
+                        ms.Position = 0;
+
+                        await ms.CopyToAsync(stream);
+
                         responseBody.Position = 0;
 
-                        responseBody.CopyTo(stream);
+                        await responseBody.CopyToAsync(stream);
 
                         Console.WriteLine("Request complete");
 

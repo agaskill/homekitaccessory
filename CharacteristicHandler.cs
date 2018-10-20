@@ -8,26 +8,39 @@ using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using System.Diagnostics;
 
 namespace HomeKitAccessory
 {
-    public class Connection
+    public class CharacteristicHandler : IDisposable
     {
         private Server server;
         private Timer notificationTimer;
         private Dictionary<AccessoryCharacteristicId, object> pendingNotifications;
-        private Stream client;
+        private Action<JObject> eventHandler;
         private Dictionary<AccessoryCharacteristicId, IDisposable> subscriptions;
         private object responseLock;
 
-        public Connection(Server server, Stream client)
+        public CharacteristicHandler(Server server, Action<JObject> eventHandler)
         {
             this.server = server;
-            this.client = client;
+            this.eventHandler = eventHandler;
 
             pendingNotifications = new Dictionary<AccessoryCharacteristicId, object>();
             subscriptions = new Dictionary<AccessoryCharacteristicId, IDisposable>();
             responseLock = new object();
+        }
+
+        public void Dispose()
+        {
+            Trace.TraceInformation("Disposing of CharacteristicHandler {0}", this.GetHashCode());
+
+            notificationTimer.Dispose();
+            foreach (var entry in subscriptions)
+            {
+                Trace.TraceInformation("Disposing of subscription to {0}", entry.Key);
+                entry.Value.Dispose();
+            }
         }
 
         private void CharacteristicChanged(AccessoryCharacteristicId id, object value)
@@ -43,10 +56,10 @@ namespace HomeKitAccessory
 
         private class Observer : IObserver<object>
         {
-            private Connection connection;
+            private CharacteristicHandler connection;
             private AccessoryCharacteristicId id;
 
-            public Observer(Connection connection, AccessoryCharacteristicId id)
+            public Observer(CharacteristicHandler connection, AccessoryCharacteristicId id)
             {
                 this.connection = connection;
                 this.id = id;
@@ -64,13 +77,13 @@ namespace HomeKitAccessory
 
         private Characteristic FindCharacteristic(int accessoryId, int instanceId)
         {
-            var accessory = server.Accessories.Find(a => a.Id == accessoryId);
+            var accessory = server.Accessories.FirstOrDefault(a => a.Id == accessoryId);
             if (accessory == null) return null;
             var characteristic = accessory.Characteristics.FirstOrDefault(c => c.InstanceId == instanceId);
             return characteristic;
         }
 
-        private Task<HapResponse> HandleCharacteristicReadRequest(CharacteristicReadRequest request)
+        public Task<HapResponse> HandleCharacteristicReadRequest(CharacteristicReadRequest request)
         {
             var tasks = new List<Task>();
             var results = new JArray();
@@ -135,33 +148,9 @@ namespace HomeKitAccessory
 
                 return response;
             });
-
-            /*
-            
-                var body = Serialize(
-                    new { characteristics },
-                    new CharacteristicConverter() {
-                        IncludeAccessoryId = true,
-                        IncludeMeta = request.IncludeMeta,
-                        IncludePerms = request.IncludePerms,
-                        IncludeType = request.IncludeType,
-                        CurrentEvents = request.IncludeEvent ? subscriptions.Keys.ToHashSet() : null
-                    });
-
-                var header = Encoding.UTF8.GetBytes(
-                    statusLine
-                    + "Content-Type: application/hap+json\r\n"
-                    + "Content-Length: " + body.Length + "\r\n"
-                    + "Date: " + DateTime.UtcNow.ToString("r") + "\r\n\r\n");
-                lock (responseLock) {
-                    client.Write(header);
-                    client.Write(body);
-                }
-                
-                 */
         }
 
-        private Task<HapResponse> HandleCharacteristicWriteRequest(CharacteristicWriteRequest request)
+        public Task<HapResponse> HandleCharacteristicWriteRequest(CharacteristicWriteRequest request)
         {
             var characteristics = new JArray();
             var tasks = new List<Task>();
@@ -271,49 +260,11 @@ namespace HomeKitAccessory
                 }
             }
 
-            SendEvent(characteristics);
-        }
-
-        private void SendEvent(JArray characteristics)
-        {
-            var body = Encoding.UTF8.GetBytes(new JObject() {
-                {"characteristics", characteristics}
-            }.ToString());
-            var header = Encoding.UTF8.GetBytes(
-                "EVENT/1.0 200 OK\r\n" +
-                "Content-Type: application/hap+json\r\n" +
-                "Content-Length: " + body.Length + "\r\n" +
-                "Date: " + DateTime.UtcNow.ToString("r") +
-                "\r\n\r\n");
-                
-            lock (responseLock) {
-                client.Write(header);
-                client.Write(body);
+            if (characteristics.Count > 0) {
+                eventHandler.Invoke(new JObject() {
+                    { "characteristics", characteristics }
+                });
             }
         }
-
-        private void SendResponse(HapResponse response)
-        {
-            byte[] body;
-            if (response.Body == null) {
-                body = null;
-            }
-            else {
-                body = Encoding.UTF8.GetBytes(response.Body.ToString());
-            }
-
-            var header = "HTTP/1.1 " + response.Status + "\r\n";
-            if (body != null) {
-                header += "Content-Type: application/hap+json\r\nContent-Length: " + body.Length + "\r\n";
-            }
-            header += "\r\n";
-
-            lock (responseLock) {
-                client.Write(Encoding.UTF8.GetBytes(header));
-                if (body != null)
-                    client.Write(body);
-            }
-        }
-
     }
 }

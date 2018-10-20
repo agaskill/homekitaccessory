@@ -12,6 +12,11 @@ namespace HomeKitAccessory
             InstanceId = instanceId;
         }
 
+        public override string ToString()
+        {
+            return $"{{\"aid\":{AccessoryId},\"iid\":{InstanceId}}}";
+        }
+
         public bool Equals(AccessoryCharacteristicId other)
         {
             return AccessoryId == other.AccessoryId
