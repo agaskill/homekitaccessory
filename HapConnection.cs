@@ -72,9 +72,12 @@ namespace HomeKitAccessory
             return TLVResponse(ctx, res);
         }
 
-        Task HandlePairVerify(IOwinContext context)
+        Task HandlePairVerify(IOwinContext ctx)
         {
-            throw new NotImplementedException();
+            var req = ReadTLVRequest(ctx);
+            var res = pairState.HandlePairVerifyRequest(req, out PairSetupState newState);
+            if (newState != null) pairState = newState;
+            return TLVResponse(ctx, res);
         }
 
         Task HandleCharacteristics(IOwinContext context)

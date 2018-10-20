@@ -17,6 +17,11 @@ namespace HomeKitAccessory
         {
             public byte[] publicKey;
             public byte[] secretKey;
+
+            public override string ToString()
+            {
+                return "public: " + BitConverter.ToString(publicKey) + "; secret: " + BitConverter.ToString(secretKey);
+            }
         }
 
         [DllImport("libsodium")]
@@ -32,6 +37,20 @@ namespace HomeKitAccessory
                 publicKey = pk,
                 secretKey = sk
             };
+        }
+
+        [DllImport("libsodium")]
+        private static extern int crypto_box_beforenm(
+            [In, Out] byte[] k,
+            [In] byte[] pk,
+            [In] byte[] sk);
+
+        public static byte[] SharedSecret(byte[] pk, byte[] sk)
+        {
+            var sharedSecret = new byte[32];
+            if (crypto_box_beforenm(sharedSecret, pk, sk) != 0)
+                throw new ArgumentException("public key and private key can not make a shared secret key");
+            return sharedSecret;
         }
 
         [DllImport("libsodium")]
@@ -101,7 +120,7 @@ namespace HomeKitAccessory
                 nonce,
                 key);
             if (rc == -1) {
-                throw new Exception("Decryption failed");
+                return null;
             }
             return result;
         }
@@ -127,6 +146,11 @@ namespace HomeKitAccessory
         {
             public byte[] publicKey;
             public byte[] secretKey;
+            
+            public override string ToString()
+            {
+                return "public: " + BitConverter.ToString(publicKey) + "; secret: " + BitConverter.ToString(secretKey);
+            }
         }
 
         [DllImport("libsodium")]

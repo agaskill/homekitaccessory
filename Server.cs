@@ -11,11 +11,12 @@ namespace HomeKitAccessory
     {
         public PairingDatabase PairingDatabase {get; private set;}
         public ServerInfo ServerInfo {get; private set;}
+        public int ConfigNumber {get;set;}
         public IEnumerable<Accessory> Accessories => accessories.AsReadOnly();
 
         private IBonjourProvider bonjourProvider;
         private List<Accessory> accessories;
-        private int configNumber = 1;
+        
         private HttpServer server;
 
         public Server(PairingDatabase pairingDatabase, ServerInfo serverInfo, IBonjourProvider bonjourProvider)
@@ -28,6 +29,12 @@ namespace HomeKitAccessory
 
         public string PairingId => PairingDatabase.DeviceId;
 
+        public void AddPairing(string deviceId, byte[] publicKey)
+        {
+            PairingDatabase.AddPairing(deviceId, publicKey);
+            bonjourProvider.Advertise(DiscoveryInfo);
+        }
+
         public DiscoveryInfo DiscoveryInfo
         {
             get
@@ -35,7 +42,7 @@ namespace HomeKitAccessory
                 var di = new DiscoveryInfo() {
                     Name = ServerInfo.Name,
                     Model = ServerInfo.Model,
-                    ConfigNumber = configNumber,
+                    ConfigNumber = ConfigNumber,
                     Port = ServerInfo.Port,
                     DeviceId = PairingDatabase.DeviceId,
                     CategoryId = ServerInfo.CategoryId
@@ -74,7 +81,6 @@ namespace HomeKitAccessory
         public void RegisterAccessory(Accessory accessory)
         {
             accessories.Add(accessory);
-            configNumber++;
         }
 
         public Task Run()

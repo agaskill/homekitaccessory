@@ -11,7 +11,7 @@ namespace HomeKitAccessory
         public string DeviceId {get;set;}
         public Sodium.Ed25519Keypair SignKeyPair {get;set;}
 
-        public IList<PairingEntry> Pairings {get;set;}
+        public List<PairingEntry> Pairings {get;set;}
 
         public static string GenerateDeviceId()
         {
@@ -30,6 +30,11 @@ namespace HomeKitAccessory
             };
             Pairings.Add(entry);
             Save();
+        }
+
+        public byte[] FindKey(string deviceId)
+        {
+            return Pairings.Find(p => p.DeviceId == deviceId)?.PublicKey;
         }
 
         public void Save()

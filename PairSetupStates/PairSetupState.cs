@@ -1,10 +1,19 @@
 using System.Collections.Generic;
+using System;
 
 namespace HomeKitAccessory.PairSetupStates
 {
     abstract class PairSetupState
     {
-        public abstract List<TLV> HandlePairSetupRequest(List<TLV> request, out PairSetupState newState);
+        public virtual List<TLV> HandlePairSetupRequest(List<TLV> request, out PairSetupState newState)
+        {
+            throw new InvalidOperationException("Pair setup is not permitted in current state");
+        }
+
+        public virtual List<TLV> HandlePairVerifyRequest(List<TLV> request, out PairSetupState newState)
+        {
+            throw new InvalidOperationException("Pair verify is not permitted in current state");
+        }
 
         protected Server server;
 

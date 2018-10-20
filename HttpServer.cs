@@ -31,7 +31,15 @@ namespace HomeKitAccessory
             running = true;
 
             while (running) {
-                var client = await tcpServer.AcceptTcpClientAsync();
+                TcpClient client;
+                try
+                {
+                    client = await tcpServer.AcceptTcpClientAsync();
+                }
+                catch (ObjectDisposedException)
+                {
+                    break;
+                }
                 Task.Run(() => HandleClient(client, middlewareFactory(OnNotification)));
             }
         }
@@ -175,6 +183,7 @@ namespace HomeKitAccessory
                 }
             }
 
+            client.Dispose();
             Console.WriteLine("Client disconnect normally");
         }
     }

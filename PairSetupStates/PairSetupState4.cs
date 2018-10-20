@@ -64,7 +64,7 @@ namespace HomeKitAccessory.PairSetupStates
 
             Console.WriteLine("device signature verified");
 
-            server.PairingDatabase.AddPairing(Encoding.ASCII.GetString(deviceId), deviceLTPK);
+            server.AddPairing(Encoding.ASCII.GetString(deviceId), deviceLTPK);
 
             var accessoryLongTerm = server.PairingDatabase.SignKeyPair;
 
