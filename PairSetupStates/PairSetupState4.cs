@@ -23,22 +23,21 @@ namespace HomeKitAccessory.PairSetupStates
                 throw new InvalidOperationException("Invalid request state " + state);
             var deviceEncryptedData = request.Find(x => x.Tag == TLVType.EncryptedData).DataValue;
 
-            var sessionKey = HKDF.SHA512(srpKey,
+            var sessionKey = new Sodium.Key(HKDF.SHA512(srpKey,
                 "Pair-Setup-Encrypt-Salt",
                 "Pair-Setup-Encrypt-Info",
-                32);
+                32));
 
             var devicePlainData = Sodium.Decrypt(
                 deviceEncryptedData,
-                null,
-                Encoding.ASCII.GetBytes("\0\0\0\0PS-Msg05"),
+                null, "PS-Msg05",
                 sessionKey);
 
             Console.WriteLine("Decrypted device data");
 
             var deviceSubTLV = TLV.Deserialize(devicePlainData);
             var deviceId = deviceSubTLV.Find(x => x.Tag == TLVType.Identifier).DataValue;
-            var deviceLTPK = deviceSubTLV.Find(x => x.Tag == TLVType.PublicKey).DataValue;
+            var deviceLTPK = new Sodium.Ed25519PublicKey(deviceSubTLV.Find(x => x.Tag == TLVType.PublicKey).DataValue);
             var deviceSignature = deviceSubTLV.Find(x => x.Tag == TLVType.Signature).DataValue;
 
             var iosDeviceX = HKDF.SHA512(
@@ -50,7 +49,7 @@ namespace HomeKitAccessory.PairSetupStates
             var iosDeviceInfo = new MemoryStream();
             iosDeviceInfo.Write(iosDeviceX);
             iosDeviceInfo.Write(deviceId);
-            iosDeviceInfo.Write(deviceLTPK);
+            iosDeviceInfo.Write(deviceLTPK.Data);
 
             if (!Sodium.VerifyDetached(deviceSignature, iosDeviceInfo.ToArray(), deviceLTPK))
             {
@@ -76,18 +75,17 @@ namespace HomeKitAccessory.PairSetupStates
             var accessoryInfo = new MemoryStream();
             accessoryInfo.Write(accessoryX);
             accessoryInfo.Write(Encoding.ASCII.GetBytes(server.PairingId));
-            accessoryInfo.Write(accessoryLongTerm.publicKey);
-            var signature = Sodium.SignDetached(accessoryInfo.ToArray(), accessoryLongTerm.secretKey);
+            accessoryInfo.Write(accessoryLongTerm.PublicKey.Data);
+            var signature = Sodium.SignDetached(accessoryInfo.ToArray(), accessoryLongTerm.SecretKey);
 
             var subtlv = TLV.Serialize(new List<TLV>() {
                 new TLV(TLVType.Identifier, server.PairingId),
-                new TLV(TLVType.PublicKey, accessoryLongTerm.publicKey),
+                new TLV(TLVType.PublicKey, accessoryLongTerm.PublicKey.Data),
                 new TLV(TLVType.Signature, signature)
             });
 
             var encdata = Sodium.Encrypt(subtlv, null,
-                Encoding.ASCII.GetBytes("\0\0\0\0PS-Msg06"),
-                sessionKey);
+                "PS-Msg06", sessionKey);
 
             Console.WriteLine("Responding with encrypted accessory info");
 

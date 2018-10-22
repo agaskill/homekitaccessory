@@ -21,7 +21,7 @@ namespace HomeKitAccessory
             return BitConverter.ToString(bytes).Replace('-', ':');
         }
 
-        public void AddPairing(string deviceId, byte[] longTermPublic)
+        public void AddPairing(string deviceId, Sodium.Ed25519PublicKey longTermPublic)
         {
             var entry = new PairingEntry
             {
@@ -32,7 +32,7 @@ namespace HomeKitAccessory
             Save();
         }
 
-        public byte[] FindKey(string deviceId)
+        public Sodium.Ed25519PublicKey FindKey(string deviceId)
         {
             return Pairings.Find(p => p.DeviceId == deviceId)?.PublicKey;
         }
@@ -74,6 +74,6 @@ namespace HomeKitAccessory
     public class PairingEntry
     {
         public string DeviceId {get;set;}
-        public byte[] PublicKey {get;set;}
+        public Sodium.Ed25519PublicKey PublicKey {get;set;}
     }
 }

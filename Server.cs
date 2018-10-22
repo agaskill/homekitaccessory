@@ -29,7 +29,7 @@ namespace HomeKitAccessory
 
         public string PairingId => PairingDatabase.DeviceId;
 
-        public void AddPairing(string deviceId, byte[] publicKey)
+        public void AddPairing(string deviceId, Sodium.Ed25519PublicKey publicKey)
         {
             PairingDatabase.AddPairing(deviceId, publicKey);
             bonjourProvider.Advertise(DiscoveryInfo);

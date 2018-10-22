@@ -37,25 +37,25 @@ namespace HomeKitAccessory.PairSetupStates
             var state = GetState(request);
             if (state != 1)
                 throw new InvalidOperationException("Invalid request state");
-            var devicePublic = request.Find(x => x.Tag == TLVType.PublicKey).DataValue;
-            Console.WriteLine("Device's Curve25519 public key is " + BitConverter.ToString(devicePublic));
+            var deviceSessionPublicKey = new Sodium.Curve25519PublicKey(TLV.Find(request, TLVType.PublicKey).DataValue);
+            Console.WriteLine("Device's Curve25519 public key is " + BitConverter.ToString(deviceSessionPublicKey.Data));
 
-            var keyPair = Sodium.BoxKeypair();
-            var sharedSecret = Sodium.SharedSecret(devicePublic, keyPair.secretKey);
-            Console.WriteLine("Generated accessory Curve25519 keypair {0}", keyPair);
-            Console.WriteLine("Curve25519 shared secret is " + BitConverter.ToString(sharedSecret));
+            var accessorySession = Sodium.BoxKeypair();
+            var sharedSecret = Sodium.SharedSecret(deviceSessionPublicKey, accessorySession.SecretKey);
+            Console.WriteLine("Generated accessory Curve25519 keypair {0}", accessorySession);
+            Console.WriteLine("Curve25519 shared secret is " + BitConverter.ToString(sharedSecret.Data));
 
             var accessoryInfo = new MemoryStream();
-            accessoryInfo.Write(keyPair.publicKey);
+            accessoryInfo.Write(accessorySession.PublicKey.Data);
             accessoryInfo.Write(Encoding.ASCII.GetBytes(server.PairingId));
-            accessoryInfo.Write(devicePublic);
+            accessoryInfo.Write(deviceSessionPublicKey.Data);
 
             Console.WriteLine("Signing accessory info with accessory secret key "
-                + BitConverter.ToString(server.PairingDatabase.SignKeyPair.secretKey));
+                + BitConverter.ToString(server.PairingDatabase.SignKeyPair.SecretKey.Data));
 
             var accessorySignature = Sodium.SignDetached(
                 accessoryInfo.ToArray(),
-                server.PairingDatabase.SignKeyPair.secretKey);
+                server.PairingDatabase.SignKeyPair.SecretKey);
 
             Console.WriteLine("Generated signature " + BitConverter.ToString(accessorySignature));
 
@@ -63,24 +63,23 @@ namespace HomeKitAccessory.PairSetupStates
                 new TLV(TLVType.Identifier, server.PairingId),
                 new TLV(TLVType.Signature, accessorySignature));
             
-            var sessionKey = HKDF.SHA512(
-                sharedSecret,
+            var sessionKey = new Sodium.Key(HKDF.SHA512(
+                sharedSecret.Data,
                 "Pair-Verify-Encrypt-Salt",
                 "Pair-Verify-Encrypt-Info",
-                32);
+                32));
 
             Console.WriteLine("Encrypting info sub-tlv with derived session key");
 
             var encryptedData = Sodium.Encrypt(
                 subTlv, null,
-                Encoding.ASCII.GetBytes("\0\0\0\0PV-Msg02"),
-                sessionKey);
+                "PV-Msg02", sessionKey);
 
-            newState = new PairVerifyState2(server, sessionKey, sharedSecret, devicePublic, keyPair.publicKey);
+            newState = new PairVerifyState2(server, sessionKey, sharedSecret, deviceSessionPublicKey, accessorySession.PublicKey);
 
             return new List<TLV>() {
                 new TLV(TLVType.State, 2),
-                new TLV(TLVType.PublicKey, keyPair.publicKey),
+                new TLV(TLVType.PublicKey, accessorySession.PublicKey.Data),
                 new TLV(TLVType.EncryptedData, encryptedData)
             };
         }

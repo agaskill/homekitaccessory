@@ -13,12 +13,12 @@ namespace HomeKitAccessory
 
     public class TestClient
     {
-        Sodium.Ed25519Keypair signKey;
+        Sodium.Ed25519Keypair deviceSign;
         string deviceId;
 
         public TestClient(string host, int port)
         {
-            signKey = Sodium.SignKeypair();
+            deviceSign = Sodium.SignKeypair();
             deviceId = Guid.NewGuid().ToString();
             client = new HttpClient();
             client.BaseAddress = new Uri("http://" + host + ":" + port);
@@ -96,24 +96,23 @@ namespace HomeKitAccessory
             var iosDeviceInfo = new MemoryStream();
             iosDeviceInfo.Write(iosDeviceX);
             iosDeviceInfo.Write(Encoding.ASCII.GetBytes(deviceId));
-            iosDeviceInfo.Write(signKey.publicKey);
-            var iosDeviceSignature = Sodium.SignDetached(iosDeviceInfo.ToArray(), signKey.secretKey);
+            iosDeviceInfo.Write(deviceSign.PublicKey.Data);
+            var iosDeviceSignature = Sodium.SignDetached(iosDeviceInfo.ToArray(), deviceSign.SecretKey);
 
             var iosInfoTlv = TLV.Serialize(
                 new TLV(TLVType.Identifier, deviceId),
-                new TLV(TLVType.PublicKey, signKey.publicKey),
+                new TLV(TLVType.PublicKey, deviceSign.PublicKey.Data),
                 new TLV(TLVType.Signature, iosDeviceSignature));
 
-            var sessionKey = HKDF.SHA512(
+            var sessionKey = new Sodium.Key(HKDF.SHA512(
                 srpKey,
                 "Pair-Setup-Encrypt-Salt",
                 "Pair-Setup-Encrypt-Info",
-                32);
+                32));
             
             var iosEncData = Sodium.Encrypt(
                 iosInfoTlv, null,
-                Encoding.ASCII.GetBytes("\0\0\0\0PS-Msg05"),
-                sessionKey);
+                "PS-Msg05", sessionKey);
             
             res = SendTLVMessage("/pair-setup", TLV.Serialize(
                 new TLV(TLVType.State, 5),
@@ -123,12 +122,12 @@ namespace HomeKitAccessory
             Assert("Expect no error in state 6", TLV.Find(res, TLVType.Error) == null);
 
             var accessoryEncData = TLV.Find(res, TLVType.EncryptedData).DataValue;
-            var accessoryPlainData = Sodium.Decrypt(accessoryEncData, null,
-                Encoding.ASCII.GetBytes("\0\0\0\0PS-Msg06"),
-                sessionKey);
+            var accessoryPlainData = Sodium.Decrypt(
+                accessoryEncData, null,
+                "PS-Msg06", sessionKey);
             var accessoryData = TLV.Deserialize(accessoryPlainData);
             accessoryPairingId = TLV.Find(accessoryData, TLVType.Identifier).StringValue;
-            accessoryPublic = TLV.Find(accessoryData, TLVType.PublicKey).DataValue;
+            accessorySignPublic = new Sodium.Ed25519PublicKey(TLV.Find(accessoryData, TLVType.PublicKey).DataValue);
             var accessorySignature = TLV.Find(accessoryData, TLVType.Signature).DataValue;
             var accessoryX = HKDF.SHA512(
                 srpKey,
@@ -139,45 +138,44 @@ namespace HomeKitAccessory
             var accessoryInfo = new MemoryStream();
             accessoryInfo.Write(accessoryX);
             accessoryInfo.Write(Encoding.ASCII.GetBytes(accessoryPairingId));
-            accessoryInfo.Write(accessoryPublic);
-            Assert("Signature verifies", Sodium.VerifyDetached(accessorySignature, accessoryInfo.ToArray(), accessoryPublic));
+            accessoryInfo.Write(accessorySignPublic.Data);
+            Assert("Signature verifies", Sodium.VerifyDetached(accessorySignature, accessoryInfo.ToArray(), accessorySignPublic));
 
             Console.WriteLine("Pair setup succeeded");
             Console.WriteLine("Accessory pairing Id: " + accessoryPairingId);
-            Console.WriteLine("Accessory public key: " + Convert.ToBase64String(accessoryPublic));
+            Console.WriteLine("Accessory public key: " + Convert.ToBase64String(accessorySignPublic.Data));
         }
 
         public void PairVerify()
         {
-            var keypair = Sodium.BoxKeypair();
+            var deviceCurve = Sodium.BoxKeypair();
 
-            Console.WriteLine("device private key " + BitConverter.ToString(keypair.secretKey));
-            Console.WriteLine("Sending device public key " + BitConverter.ToString(keypair.publicKey));
+            Console.WriteLine("device private key " + BitConverter.ToString(deviceCurve.SecretKey.Data));
+            Console.WriteLine("Sending device public key " + BitConverter.ToString(deviceCurve.PublicKey.Data));
 
             var res = SendTLVMessage("/pair-verify", TLV.Serialize(
                  new TLV(TLVType.State, 1),
-                 new TLV(TLVType.PublicKey, keypair.publicKey)));
+                 new TLV(TLVType.PublicKey, deviceCurve.PublicKey.Data)));
             
             Assert("Expect state 2", TLV.Find(res, TLVType.State).IntegerValue == 2);
             Assert("No error in state 2", TLV.Find(res, TLVType.Error) == null);
 
-            var accessoryCurvePublic = TLV.Find(res, TLVType.PublicKey).DataValue;
+            var accessoryCurvePublic = new Sodium.Curve25519PublicKey(TLV.Find(res, TLVType.PublicKey).DataValue);
             var accessoryEncData = TLV.Find(res, TLVType.EncryptedData).DataValue;
-            Console.WriteLine("Received accessory public key " + BitConverter.ToString(accessoryCurvePublic));
+            Console.WriteLine("Received accessory public key " + BitConverter.ToString(accessoryCurvePublic.Data));
 
-            var sharedSecret = Sodium.SharedSecret(accessoryCurvePublic, keypair.secretKey);
-            Console.WriteLine("Shared secret: " + BitConverter.ToString(sharedSecret));
+            var sharedSecret = Sodium.SharedSecret(accessoryCurvePublic, deviceCurve.SecretKey);
+            Console.WriteLine("Shared secret: " + BitConverter.ToString(sharedSecret.Data));
 
-            var sessionKey = HKDF.SHA512(
-                sharedSecret,
+            var sessionKey = new Sodium.Key(HKDF.SHA512(
+                sharedSecret.Data,
                 "Pair-Verify-Encrypt-Salt",
                 "Pair-Verify-Encrypt-Info",
-                32);
+                32));
 
             var accessoryPlainData = Sodium.Decrypt(
                 accessoryEncData, null,
-                Encoding.ASCII.GetBytes("\0\0\0\0PV-Msg02"),
-                sessionKey);
+                "PV-Msg02", sessionKey);
             Assert("Decryption failed", accessoryPlainData != null);
             
             var accessoryData = TLV.Deserialize(accessoryPlainData);
@@ -185,23 +183,22 @@ namespace HomeKitAccessory
             Assert("PairingId matches", assertedPairingId == accessoryPairingId);
             var accessorySignature = TLV.Find(accessoryData, TLVType.Signature).DataValue;
             var accessoryInfo = new MemoryStream();
-            accessoryInfo.Write(accessoryCurvePublic);
+            accessoryInfo.Write(accessoryCurvePublic.Data);
             accessoryInfo.Write(Encoding.ASCII.GetBytes(accessoryPairingId));
-            accessoryInfo.Write(keypair.publicKey);
-            Assert("Signature validates", Sodium.VerifyDetached(accessorySignature, accessoryInfo.ToArray(), accessoryPublic));
+            accessoryInfo.Write(deviceCurve.PublicKey.Data);
+            Assert("Signature validates", Sodium.VerifyDetached(accessorySignature, accessoryInfo.ToArray(), accessorySignPublic));
 
             var deviceInfo = new MemoryStream();
-            deviceInfo.Write(signKey.publicKey);
+            deviceInfo.Write(deviceCurve.PublicKey.Data);
             deviceInfo.Write(Encoding.ASCII.GetBytes(deviceId));
-            deviceInfo.Write(accessoryCurvePublic);
+            deviceInfo.Write(accessoryCurvePublic.Data);
 
-            var iosDeviceSignature = Sodium.SignDetached(deviceInfo.ToArray(), signKey.secretKey);
+            var iosDeviceSignature = Sodium.SignDetached(deviceInfo.ToArray(), deviceSign.SecretKey);
             var iosSubTlv = TLV.Serialize(
                 new TLV(TLVType.Identifier, deviceId),
                 new TLV(TLVType.Signature, iosDeviceSignature));
             var iosEncData = Sodium.Encrypt(iosSubTlv, null,
-                Encoding.ASCII.GetBytes("\0\0\0\0PV-Msg03"),
-                sessionKey);
+                "PV-Msg03", sessionKey);
             
             res = SendTLVMessage("/pair-verify", TLV.Serialize(
                 new TLV(TLVType.State, 3),
@@ -214,7 +211,7 @@ namespace HomeKitAccessory
         }
 
         private string accessoryPairingId;
-        private byte[] accessoryPublic;
+        private Sodium.Ed25519PublicKey accessorySignPublic;
 
         private static readonly byte[] N3072 = SRPAuth.Utilities.ParseByteArray(
 @"FFFFFFFF FFFFFFFF C90FDAA2 2168C234 C4C6628B 80DC1CD1 29024E08 8A67CC74

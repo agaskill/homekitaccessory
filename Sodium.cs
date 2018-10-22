@@ -2,6 +2,7 @@ namespace HomeKitAccessory
 {
     using System;
     using System.Runtime.InteropServices;
+    using System.Text;
 
     public static class Sodium
     {
@@ -13,14 +14,58 @@ namespace HomeKitAccessory
             sodium_init();
         }
 
+        public class Key
+        {
+            public byte[] Data {get; set;}
+
+            public Key(byte[] data)
+            {
+                Data = data;
+            }
+        }
+
+        public class Ed25519PublicKey : Key
+        {
+            public Ed25519PublicKey(byte[] data) : base(data) {}
+        }
+
+        public class Ed25519SecretKey : Key
+        {
+            public Ed25519SecretKey(byte[] data) : base(data) {}
+
+            public Ed25519PublicKey ComputePublic()
+            {
+                var publicKey = new byte[32];
+                var rc = crypto_sign_ed25519_sk_to_pk(publicKey, Data);
+                if (rc != 0)
+                    throw new InvalidOperationException("Failed to get public key from secret key");
+                return new Ed25519PublicKey(publicKey);
+            }
+        }
+
+        public class Curve25519PublicKey : Key
+        {
+            public Curve25519PublicKey(byte[] data) : base(data) {}
+        }
+
+        public class Curve25519SecretKey : Key
+        {
+            public Curve25519SecretKey(byte[] data) : base(data) {}
+        }
+
+        public class Curve25519SharedSecret : Key
+        {
+            public Curve25519SharedSecret(byte[] data) : base(data) {}
+        }
+
         public class Curve25519Keypair
         {
-            public byte[] publicKey;
-            public byte[] secretKey;
+            public Curve25519PublicKey PublicKey {get;set;}
+            public Curve25519SecretKey SecretKey {get;set;}
 
             public override string ToString()
             {
-                return "public: " + BitConverter.ToString(publicKey) + "; secret: " + BitConverter.ToString(secretKey);
+                return "public: " + BitConverter.ToString(PublicKey.Data) + "; secret: " + BitConverter.ToString(SecretKey.Data);
             }
         }
 
@@ -36,8 +81,8 @@ namespace HomeKitAccessory
             crypto_box_keypair(pk, sk);
             return new Curve25519Keypair
             {
-                publicKey = pk,
-                secretKey = sk
+                PublicKey = new Curve25519PublicKey(pk),
+                SecretKey = new Curve25519SecretKey(sk)
             };
         }
 
@@ -47,12 +92,22 @@ namespace HomeKitAccessory
             [In] byte[] pk,
             [In] byte[] sk);
 
-        public static byte[] SharedSecret(byte[] pk, byte[] sk)
+        public static Curve25519SharedSecret SharedSecret(Curve25519PublicKey publicKey, Curve25519SecretKey secretKey)
         {
             var sharedSecret = new byte[32];
-            if (crypto_box_beforenm(sharedSecret, pk, sk) != 0)
+            if (crypto_box_beforenm(sharedSecret, publicKey.Data, secretKey.Data) != 0)
                 throw new ArgumentException("public key and private key can not make a shared secret key");
-            return sharedSecret;
+            return new Curve25519SharedSecret(sharedSecret);
+        }
+
+        public class Salt
+        {
+            public byte[] Data {get;set;}
+
+            public static explicit operator Salt(byte[] data)
+            {
+                return new Salt { Data  = data };
+            }
         }
 
         [DllImport("libsodium")]
@@ -66,12 +121,23 @@ namespace HomeKitAccessory
             [In] byte[] nsec,
             [In] byte[] npub,
             [In] byte[] key);
+        
+        public static byte[] Encrypt(byte[] msg, byte[] ad, string nonce, Key key)
+        {
+            var nonceBytes = Encoding.UTF8.GetBytes(nonce);
+            if (nonceBytes.Length < 12) {
+                var tmp = new byte[12];
+                Array.Copy(nonceBytes, 0, tmp, 12 - nonceBytes.Length, nonceBytes.Length);
+                nonceBytes = tmp;
+            }
+            return Encrypt(msg, ad, nonceBytes, key);
+        }
 
-        public static byte[] Encrypt(byte[] msg, byte[] ad, byte[] nonce, byte[] key)
+        public static byte[] Encrypt(byte[] msg, byte[] ad, byte[] nonce, Key key)
         {
             if (nonce.Length != 12)
                 throw new ArgumentException(nameof(nonce));
-            if (key.Length != 32)
+            if (key.Data.Length != 32)
                 throw new ArgumentException(nameof(key));
             if (msg == null)
                 throw new ArgumentNullException(nameof(msg));
@@ -83,10 +149,10 @@ namespace HomeKitAccessory
                 msg,
                 (ulong)msg.LongLength,
                 ad,
-                (ad == null ? 0UL : (ulong)ad.LongLength),
+                (ulong)(ad?.LongLength ?? 0),
                 null,
                 nonce,
-                key);
+                key.Data);
             return result;
         }
 
@@ -102,11 +168,22 @@ namespace HomeKitAccessory
             [In] byte[] npub,
             [In] byte[] key);
 
-        public static byte[] Decrypt(byte[] ciphertext, byte[] ad, byte[] nonce, byte[] key)
+        public static byte[] Decrypt(byte[] ciphertext, byte[] ad, string nonce, Key key)
+        {
+            var nonceBytes = Encoding.UTF8.GetBytes(nonce);
+            if (nonceBytes.Length < 12) {
+                var tmp = new byte[12];
+                Array.Copy(nonceBytes, 0, tmp, 12 - nonceBytes.Length, nonceBytes.Length);
+                nonceBytes = tmp;
+            }
+            return Decrypt(ciphertext, ad, nonceBytes, key);
+        }
+
+        public static byte[] Decrypt(byte[] ciphertext, byte[] ad, byte[] nonce, Key key)
         {
             if (nonce.Length != 12)
                 throw new ArgumentException(nameof(nonce));
-            if (key.Length != 32)
+            if (key.Data.Length != 32)
                 throw new ArgumentException(nameof(key));
             if (ciphertext == null)
                 throw new ArgumentNullException(nameof(ciphertext));
@@ -118,9 +195,9 @@ namespace HomeKitAccessory
                 null, ciphertext,
                 (ulong)ciphertext.LongLength,
                 ad,
-                (ad == null ? 0UL : (ulong)ad.LongLength),
+                (ulong)(ad?.LongLength ?? 0),
                 nonce,
-                key);
+                key.Data);
             if (rc == -1) {
                 return null;
             }
@@ -139,19 +216,19 @@ namespace HomeKitAccessory
             crypto_sign_keypair(pk, sk);
             return new Ed25519Keypair
             {
-                publicKey = pk,
-                secretKey = sk
+                PublicKey = new Ed25519PublicKey(pk),
+                SecretKey = new Ed25519SecretKey(sk)
             };
         }
 
         public class Ed25519Keypair
         {
-            public byte[] publicKey;
-            public byte[] secretKey;
+            public Ed25519PublicKey PublicKey {get;set;}
+            public Ed25519SecretKey SecretKey {get;set;}
             
             public override string ToString()
             {
-                return "public: " + BitConverter.ToString(publicKey) + "; secret: " + BitConverter.ToString(secretKey);
+                return "public: " + BitConverter.ToString(PublicKey.Data) + "; secret: " + BitConverter.ToString(SecretKey.Data);
             }
         }
 
@@ -163,17 +240,17 @@ namespace HomeKitAccessory
             ulong mlen,
             [In] byte[] sk);
         
-        public static byte[] SignDetached(byte[] msg, byte[] secretKey)
+        public static byte[] SignDetached(byte[] msg, Ed25519SecretKey secretKey)
         {
             if (msg == null)
                 throw new ArgumentNullException(nameof(msg));
             if (secretKey == null)
                 throw new ArgumentNullException(nameof(secretKey));
-            if (secretKey.Length != 64)
+            if (secretKey.Data.Length != 64)
                 throw new ArgumentException("Secret key length is invalid", nameof(secretKey));
 
             var sig = new byte[64];
-            var rc = crypto_sign_ed25519_detached(sig, out ulong siglen, msg, (ulong)msg.LongLength, secretKey);
+            var rc = crypto_sign_ed25519_detached(sig, out ulong siglen, msg, (ulong)msg.LongLength, secretKey.Data);
             return sig;
         }
 
@@ -184,7 +261,7 @@ namespace HomeKitAccessory
             ulong mlen,
             [In] byte[] pk);
 
-        public static bool VerifyDetached(byte[] sig, byte[] msg, byte[] pk)
+        public static bool VerifyDetached(byte[] sig, byte[] msg, Ed25519PublicKey pk)
         {
             if (sig == null)
                 throw new ArgumentNullException(nameof(sig));
@@ -194,9 +271,9 @@ namespace HomeKitAccessory
                 throw new ArgumentNullException(nameof(msg));
             if (pk == null)
                 throw new ArgumentNullException(nameof(pk));
-            if (pk.Length != 32)
+            if (pk.Data.Length != 32)
                 throw new ArgumentException("private key length invalid", nameof(pk));
-            var rc = crypto_sign_ed25519_verify_detached(sig, msg, (ulong)msg.LongLength, pk);
+            var rc = crypto_sign_ed25519_verify_detached(sig, msg, (ulong)msg.LongLength, pk.Data);
             return rc == 0;
         }
 
@@ -204,18 +281,5 @@ namespace HomeKitAccessory
         private static extern int crypto_sign_ed25519_sk_to_pk(
             [In, Out] byte[] pk,
             [In] byte[] sk);
-
-        public static byte[] SignSecretKeyToPublicKey(byte[] secretKey)
-        {
-            if (secretKey == null)
-                throw new ArgumentNullException(nameof(secretKey));
-            if (secretKey.Length != 64)
-                throw new ArgumentException("Invalid secret key length", nameof(secretKey));
-            var publicKey = new byte[32];
-            var rc = crypto_sign_ed25519_sk_to_pk(publicKey, secretKey);
-            if (rc != 0)
-                throw new InvalidOperationException("Failed to get public key from secret key");
-            return publicKey;
-        }
     }
 }

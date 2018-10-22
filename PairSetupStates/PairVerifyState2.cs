@@ -7,22 +7,22 @@ namespace HomeKitAccessory.PairSetupStates
 {
     class PairVerifyState2 : PairSetupState
     {
-        private byte[] sessionKey;
-        private byte[] sharedSecret;
-        private byte[] deviceSessionPublic;
-        private byte[] accessorySessionPublic;
+        private Sodium.Key sessionKey;
+        private Sodium.Curve25519SharedSecret sharedSecret;
+        private Sodium.Curve25519PublicKey deviceCurvePublic;
+        private Sodium.Curve25519PublicKey accessoryCurvePublic;
 
         public PairVerifyState2(Server server,
-            byte[] sessionKey,
-            byte[] sharedSecret,
-            byte[] deviceSessionPublic,
-            byte[] accessorySessionPublic)
+            Sodium.Key sessionKey,
+            Sodium.Curve25519SharedSecret sharedSecret,
+            Sodium.Curve25519PublicKey deviceSessionPublic,
+            Sodium.Curve25519PublicKey accessorySessionPublic)
             : base(server)
         {
             this.sessionKey = sessionKey;
             this.sharedSecret = sharedSecret;
-            this.deviceSessionPublic = deviceSessionPublic;
-            this.accessorySessionPublic = accessorySessionPublic;
+            this.deviceCurvePublic = deviceSessionPublic;
+            this.accessoryCurvePublic = accessorySessionPublic;
         }
 
         public override List<TLV> HandlePairVerifyRequest(List<TLV> request, out PairSetupState newState)
@@ -31,9 +31,10 @@ namespace HomeKitAccessory.PairSetupStates
             var state = GetState(request);
             if (state != 3)
                 throw new InvalidOperationException("Unexpected state " + state);
-            var encryptedData = request.Find(x => x.Tag == TLVType.EncryptedData).DataValue;
-            var plainData = Sodium.Decrypt(encryptedData, null,
-                Encoding.ASCII.GetBytes("\0\0\0\0PV-Msg03"), sessionKey);
+            var encryptedData = TLV.Find(request, TLVType.EncryptedData).DataValue;
+            var plainData = Sodium.Decrypt(
+                encryptedData, null,
+                "PV-Msg03", sessionKey);
             if (plainData == null)
             {
                 Console.WriteLine("Data did not decrypt");
@@ -45,7 +46,7 @@ namespace HomeKitAccessory.PairSetupStates
             }
 
             var deviceData = TLV.Deserialize(plainData);
-            var devicePairingId = deviceData.Find(x => x.Tag == TLVType.Identifier).StringValue;
+            var devicePairingId = TLV.Find(deviceData, TLVType.Identifier).StringValue;
             Console.WriteLine("Device is " + devicePairingId);
 
             var devicePublic = server.PairingDatabase.FindKey(devicePairingId);
@@ -59,11 +60,11 @@ namespace HomeKitAccessory.PairSetupStates
                 };
             }
 
-            var deviceSignature = deviceData.Find(x => x.Tag == TLVType.Signature).DataValue;
+            var deviceSignature = TLV.Find(deviceData, TLVType.Signature).DataValue;
             var deviceInfo = new MemoryStream();
-            deviceInfo.Write(deviceSessionPublic);
+            deviceInfo.Write(deviceCurvePublic.Data);
             deviceInfo.Write(Encoding.ASCII.GetBytes(devicePairingId));
-            deviceInfo.Write(accessorySessionPublic);
+            deviceInfo.Write(accessoryCurvePublic.Data);
 
             if (!Sodium.VerifyDetached(deviceSignature, deviceInfo.ToArray(), devicePublic))
             {
@@ -78,15 +79,17 @@ namespace HomeKitAccessory.PairSetupStates
             newState = new Verified(
                 server,
                 HKDF.SHA512(
-                    sharedSecret,
+                    sharedSecret.Data,
                     "Control-Salt",
                     "Control-Read-Encryption-Key",
                     32),
                 HKDF.SHA512(
-                    sharedSecret,
+                    sharedSecret.Data,
                     "Control-Salt",
                     "Control-Write-Encryption-Key",
                     32));
+
+            Console.WriteLine("Pair verify complete");
 
             return new List<TLV>()
             {
