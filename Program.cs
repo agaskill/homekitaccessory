@@ -13,11 +13,27 @@ namespace HomeKitAccessory
         
         static void Main(string[] args)
         {
+            if (args.Length > 0 && args[0] == "testclient")
+            {
+                try
+                {
+                    var testClient = new TestClient("127.0.0.1", 5002);
+                    testClient.PairSetup("547-07-173");
+                    testClient.PairVerify();
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine(ex);
+                }
+                return;
+            }
+
             var pairingDb = PairingDatabase.LoadOrInitialize();
-            var bonjourProvider = new DnsSdBonjourProvider();
+            //var bonjourProvider = new DnsSdBonjourProvider();
+            var bonjourProvider = new MockBonjourProvider();
             var serverInfo = new ServerInfo
             {
-                Name = "MyTestDevice6",
+                Name = "MyTestDevice7",
                 Model = "TestDevice",
                 CategoryId = 1,
                 Port = 5002

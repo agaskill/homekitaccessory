@@ -25,7 +25,9 @@ namespace HomeKitAccessory
         }
 
         [DllImport("libsodium")]
-        private static extern int crypto_box_keypair(byte[] pk, byte[] sk);
+        private static extern int crypto_box_keypair(
+            [In, Out] byte[] pk,
+            [In, Out] byte[] sk);
 
         public static Curve25519Keypair BoxKeypair()
         {

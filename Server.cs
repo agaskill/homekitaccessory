@@ -53,7 +53,7 @@ namespace HomeKitAccessory
             }
         }
 
-        private string setupCode;
+        private string setupCode = "547-07-173";
 
         public string SetupCode
         {

@@ -144,6 +144,7 @@ namespace HomeKitAccessory
 
                         var ms = new MemoryStream();
                         var rw = new StreamWriter(ms);
+                        rw.NewLine = "\r\n";
 
                         var responseProtocol = ctx.Response.Protocol ?? ctx.Request.Protocol;
 

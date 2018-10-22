@@ -122,5 +122,10 @@ namespace HomeKitAccessory
         {
             return Serialize((IEnumerable<TLV>)tLVs);
         }
+
+        public static TLV Find(List<TLV> tLVs, byte tag)
+        {
+            return tLVs.Find(x => x.Tag == tag);
+        }
     }
 }
