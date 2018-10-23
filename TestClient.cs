@@ -148,7 +148,7 @@ namespace HomeKitAccessory
 
         public void PairVerify()
         {
-            var deviceCurve = Sodium.BoxKeypair();
+            var deviceCurve = new Sodium.Curve25519Keypair();
 
             Console.WriteLine("device private key " + BitConverter.ToString(deviceCurve.SecretKey.Data));
             Console.WriteLine("Sending device public key " + BitConverter.ToString(deviceCurve.PublicKey.Data));
@@ -164,13 +164,25 @@ namespace HomeKitAccessory
             var accessoryEncData = TLV.Find(res, TLVType.EncryptedData).DataValue;
             Console.WriteLine("Received accessory public key " + BitConverter.ToString(accessoryCurvePublic.Data));
 
-            var sharedSecret = Sodium.SharedSecret(accessoryCurvePublic, deviceCurve.SecretKey);
+            var sharedSecret = deviceCurve.SecretKey.ComputeSharedSecret(accessoryCurvePublic);
             Console.WriteLine("Shared secret: " + BitConverter.ToString(sharedSecret.Data));
 
             var sessionKey = new Sodium.Key(HKDF.SHA512(
                 sharedSecret.Data,
                 "Pair-Verify-Encrypt-Salt",
                 "Pair-Verify-Encrypt-Info",
+                32));
+
+            var controlReadKey = new Sodium.Key(HKDF.SHA512(
+                sharedSecret.Data,
+                "Control-Salt",
+                "Control-Read-Encryption-Key",
+                32));
+                
+            var controlWriteKey = new Sodium.Key(HKDF.SHA512(
+                sharedSecret.Data,
+                "Control-Salt",
+                "Control-Write-Encryption-Key",
                 32));
 
             var accessoryPlainData = Sodium.Decrypt(

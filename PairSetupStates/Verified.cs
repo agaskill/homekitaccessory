@@ -2,13 +2,13 @@ namespace HomeKitAccessory.PairSetupStates
 {
     class Verified : PairSetupState
     {
-        public byte[] AccessoryToControllerKey {get; private set;}
-        public byte[] ControllerToAccessoryKey {get; private set;}
+        public Sodium.Key AccessoryToControllerKey {get; private set;}
+        public Sodium.Key ControllerToAccessoryKey {get; private set;}
 
         public Verified(
             Server server,
-            byte[] accessoryToControllerKey,
-            byte[] controllerToAccessoryKey)
+            Sodium.Key accessoryToControllerKey,
+            Sodium.Key controllerToAccessoryKey)
             : base(server)
         {
             AccessoryToControllerKey = accessoryToControllerKey;

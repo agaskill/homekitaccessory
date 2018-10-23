@@ -17,7 +17,7 @@ namespace HomeKitAccessory
             {
                 try
                 {
-                    var testClient = new TestClient("127.0.0.1", 60067); //5002);
+                    var testClient = new TestClient("127.0.0.1", 5002);
                     testClient.PairSetup("547-07-173");
                     testClient.PairVerify();
                 }
@@ -29,11 +29,11 @@ namespace HomeKitAccessory
             }
 
             var pairingDb = PairingDatabase.LoadOrInitialize();
-            //var bonjourProvider = new DnsSdBonjourProvider();
-            var bonjourProvider = new MockBonjourProvider();
+            var bonjourProvider = new DnsSdBonjourProvider();
+            //var bonjourProvider = new MockBonjourProvider();
             var serverInfo = new ServerInfo
             {
-                Name = "MyTestDevice7",
+                Name = "MyTestDevice8",
                 Model = "TestDevice",
                 CategoryId = 1,
                 Port = 5002

@@ -8,19 +8,21 @@ namespace HomeKitAccessory.PairSetupStates
     class PairVerifyState2 : PairSetupState
     {
         private Sodium.Key sessionKey;
-        private Sodium.Curve25519SharedSecret sharedSecret;
+        private Sodium.Key controlReadKey;
+        private Sodium.Key controlWriteKey;
         private Sodium.Curve25519PublicKey deviceCurvePublic;
         private Sodium.Curve25519PublicKey accessoryCurvePublic;
 
-        public PairVerifyState2(Server server,
+        public PairVerifyState2(
+            Server server,
             Sodium.Key sessionKey,
-            Sodium.Curve25519SharedSecret sharedSecret,
+            Sodium.Key controlReadKey,
+            Sodium.Key controlWriteKey,
             Sodium.Curve25519PublicKey deviceSessionPublic,
             Sodium.Curve25519PublicKey accessorySessionPublic)
             : base(server)
         {
             this.sessionKey = sessionKey;
-            this.sharedSecret = sharedSecret;
             this.deviceCurvePublic = deviceSessionPublic;
             this.accessoryCurvePublic = accessorySessionPublic;
         }
@@ -78,16 +80,8 @@ namespace HomeKitAccessory.PairSetupStates
 
             newState = new Verified(
                 server,
-                HKDF.SHA512(
-                    sharedSecret.Data,
-                    "Control-Salt",
-                    "Control-Read-Encryption-Key",
-                    32),
-                HKDF.SHA512(
-                    sharedSecret.Data,
-                    "Control-Salt",
-                    "Control-Write-Encryption-Key",
-                    32));
+                controlReadKey,
+                controlWriteKey);
 
             Console.WriteLine("Pair verify complete");
 

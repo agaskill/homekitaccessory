@@ -48,9 +48,43 @@ namespace HomeKitAccessory
             public Curve25519PublicKey(byte[] data) : base(data) {}
         }
 
+        [DllImport("libsodium")]
+        private static extern void randombytes_buf(
+            [Out] byte[] buf,
+            IntPtr size);
+
+        public static byte[] GenRandom(int length)
+        {
+            var buff = new byte[length];
+            randombytes_buf(buff, (IntPtr)length);
+            return buff;
+        }
+
+        public static void FillRandom(byte[] buff)
+        {
+            randombytes_buf(buff, (IntPtr)buff.Length);
+        }
+
         public class Curve25519SecretKey : Key
         {
             public Curve25519SecretKey(byte[] data) : base(data) {}
+
+            public Curve25519SecretKey() : base(GenRandom(32)) {}
+
+            public Curve25519PublicKey ComputePublic()
+            {
+                var pk = new byte[32];
+                crypto_scalarmult_curve25519_base(pk, Data);
+                return new Curve25519PublicKey(pk);
+            }
+
+            public Curve25519SharedSecret ComputeSharedSecret(Curve25519PublicKey otherPublic)
+            {
+                var sharedSecret = new byte[32];
+                if (crypto_scalarmult_curve25519(sharedSecret, Data, otherPublic.Data) != 0)
+                    throw new ArgumentException("public key and private key can not make a shared secret key");
+                return new Curve25519SharedSecret(sharedSecret);
+            }
         }
 
         public class Curve25519SharedSecret : Key
@@ -63,6 +97,12 @@ namespace HomeKitAccessory
             public Curve25519PublicKey PublicKey {get;set;}
             public Curve25519SecretKey SecretKey {get;set;}
 
+            public Curve25519Keypair()
+            {
+                SecretKey = new Curve25519SecretKey();
+                PublicKey = SecretKey.ComputePublic();
+            }
+
             public override string ToString()
             {
                 return "public: " + BitConverter.ToString(PublicKey.Data) + "; secret: " + BitConverter.ToString(SecretKey.Data);
@@ -70,35 +110,15 @@ namespace HomeKitAccessory
         }
 
         [DllImport("libsodium")]
-        private static extern int crypto_box_keypair(
-            [In, Out] byte[] pk,
-            [In, Out] byte[] sk);
-
-        public static Curve25519Keypair BoxKeypair()
-        {
-            var pk = new byte[32];
-            var sk = new byte[32];
-            crypto_box_keypair(pk, sk);
-            return new Curve25519Keypair
-            {
-                PublicKey = new Curve25519PublicKey(pk),
-                SecretKey = new Curve25519SecretKey(sk)
-            };
-        }
+        private static extern int crypto_scalarmult_curve25519(
+            [Out] byte[] k,
+            [In] byte[] sk,
+            [In] byte[] pk);
 
         [DllImport("libsodium")]
-        private static extern int crypto_box_beforenm(
-            [In, Out] byte[] k,
-            [In] byte[] pk,
+        private static extern int crypto_scalarmult_curve25519_base(
+            [Out] byte[] pk,
             [In] byte[] sk);
-
-        public static Curve25519SharedSecret SharedSecret(Curve25519PublicKey publicKey, Curve25519SecretKey secretKey)
-        {
-            var sharedSecret = new byte[32];
-            if (crypto_box_beforenm(sharedSecret, publicKey.Data, secretKey.Data) != 0)
-                throw new ArgumentException("public key and private key can not make a shared secret key");
-            return new Curve25519SharedSecret(sharedSecret);
-        }
 
         public class Salt
         {

@@ -40,8 +40,8 @@ namespace HomeKitAccessory.PairSetupStates
             var deviceSessionPublicKey = new Sodium.Curve25519PublicKey(TLV.Find(request, TLVType.PublicKey).DataValue);
             Console.WriteLine("Device's Curve25519 public key is " + BitConverter.ToString(deviceSessionPublicKey.Data));
 
-            var accessorySession = Sodium.BoxKeypair();
-            var sharedSecret = Sodium.SharedSecret(deviceSessionPublicKey, accessorySession.SecretKey);
+            var accessorySession = new Sodium.Curve25519Keypair();
+            var sharedSecret = accessorySession.SecretKey.ComputeSharedSecret(deviceSessionPublicKey);
             Console.WriteLine("Generated accessory Curve25519 keypair {0}", accessorySession);
             Console.WriteLine("Curve25519 shared secret is " + BitConverter.ToString(sharedSecret.Data));
 
@@ -69,13 +69,27 @@ namespace HomeKitAccessory.PairSetupStates
                 "Pair-Verify-Encrypt-Info",
                 32));
 
+            var controlReadKey = new Sodium.Key(HKDF.SHA512(
+                sharedSecret.Data,
+                "Control-Salt",
+                "Control-Read-Encryption-Key",
+                32));
+            var controlWriteKey = new Sodium.Key(HKDF.SHA512(
+                sharedSecret.Data,
+                "Control-Salt",
+                "Control-Write-Encryption-Key",
+                32));
+
             Console.WriteLine("Encrypting info sub-tlv with derived session key");
 
             var encryptedData = Sodium.Encrypt(
                 subTlv, null,
                 "PV-Msg02", sessionKey);
 
-            newState = new PairVerifyState2(server, sessionKey, sharedSecret, deviceSessionPublicKey, accessorySession.PublicKey);
+            newState = new PairVerifyState2(
+                server, sessionKey,
+                controlReadKey, controlWriteKey,
+                deviceSessionPublicKey, accessorySession.PublicKey);
 
             return new List<TLV>() {
                 new TLV(TLVType.State, 2),
