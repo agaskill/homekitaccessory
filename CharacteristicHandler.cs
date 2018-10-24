@@ -234,6 +234,21 @@ namespace HomeKitAccessory
             });
         }
 
+        public HapResponse GetAccessoryDatabase()
+        {
+            var serializer = new JsonSerializer();
+            serializer.Converters.Add(new CharacteristicConverter());
+            var accessories = JToken.FromObject(server.Accessories, serializer);
+            return new HapResponse
+            {
+                Status = 200,
+                Body = new JObject()
+                {
+                    { "accessories", accessories }
+                }
+            };
+        }
+
         private void OnNotificationTimer(object state)
         {
             var characteristics = new JArray();

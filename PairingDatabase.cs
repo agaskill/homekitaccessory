@@ -37,7 +37,7 @@ namespace HomeKitAccessory
             return Pairings.Find(p => p.DeviceId == deviceId)?.PublicKey;
         }
 
-        public void Save()
+        public virtual void Save()
         {
             using (var writer = new JsonTextWriter(
                     new StreamWriter("pairingdb.json")))
@@ -47,27 +47,33 @@ namespace HomeKitAccessory
             }
         }
 
-        public static PairingDatabase LoadOrInitialize()
+        protected virtual bool Load()
         {
-            PairingDatabase pairingDatabase;
             if (File.Exists("pairingdb.json"))
             {
                 using (var reader = new JsonTextReader(
                     new StreamReader("pairingdb.json")))
                 {
-                    pairingDatabase = JsonSerializer.CreateDefault()
+                    var pairingDatabase = JsonSerializer.CreateDefault()
                         .Deserialize<PairingDatabase>(reader);
+                    SignKeyPair = pairingDatabase.SignKeyPair;
+                    DeviceId = pairingDatabase.DeviceId;
+                    Pairings = pairingDatabase.Pairings;
                 }
+                return true;
             }
-            else
+            return false;
+        }
+
+        public void LoadOrInitialize()
+        {
+            if (!Load())
             {
-                pairingDatabase = new PairingDatabase();
-                pairingDatabase.DeviceId = GenerateDeviceId();
-                pairingDatabase.SignKeyPair = Sodium.SignKeypair();
-                pairingDatabase.Pairings = new List<PairingEntry>();
-                pairingDatabase.Save();
+                DeviceId = GenerateDeviceId();
+                SignKeyPair = Sodium.SignKeypair();
+                Pairings = new List<PairingEntry>();
+                Save();
             }
-            return pairingDatabase;
         }
     }
 

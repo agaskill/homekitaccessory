@@ -23,6 +23,8 @@ namespace HomeKitAccessory.PairSetupStates
             : base(server)
         {
             this.sessionKey = sessionKey;
+            this.controlReadKey = controlReadKey;
+            this.controlWriteKey = controlWriteKey;
             this.deviceCurvePublic = deviceSessionPublic;
             this.accessoryCurvePublic = accessorySessionPublic;
         }

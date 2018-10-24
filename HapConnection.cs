@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Microsoft.Owin;
 using Newtonsoft.Json.Linq;
 using HomeKitAccessory.PairSetupStates;
+using Newtonsoft.Json;
 
 namespace HomeKitAccessory
 {
@@ -13,11 +14,13 @@ namespace HomeKitAccessory
         private CharacteristicHandler characteristicHandler;
         private PairSetupState pairState;
         private Server server;
+        private IHttpConnection connection;
 
-        public HapConnection(Server server, Action<JObject> notifications)
+        public HapConnection(Server server, IHttpConnection connection)
             : base(null)
         {
-            characteristicHandler = new CharacteristicHandler(server, notifications);
+            this.connection = connection;
+            characteristicHandler = new CharacteristicHandler(server, connection.SendEvent);
             pairState = new Initial(server);
         }
 
@@ -41,11 +44,34 @@ namespace HomeKitAccessory
             {
                 return HandlePairVerify(context);
             }
+            if (path == "/accessories")
+            {
+                return GetAccessoryDatabase(context);
+            }
             if (path == "/characteristics")
             {
                 return HandleCharacteristics(context);
             }
             return NotFound(context);
+        }
+
+        private Task GetAccessoryDatabase(IOwinContext ctx)
+        {
+            var response = characteristicHandler.GetAccessoryDatabase();
+            return HapResponse(ctx, response);
+        }
+
+        private Task HapResponse(IOwinContext ctx, HapResponse response)
+        {
+            var body = new MemoryStream();
+            var jw = new JsonTextWriter(new StreamWriter(body));
+            response.Body.WriteTo(jw);
+            jw.Flush();
+            ctx.Response.ContentType = "application/hap+json";
+            ctx.Response.ContentLength = body.Length;
+            body.Position = 0;
+            body.CopyTo(ctx.Response.Body);
+            return Task.CompletedTask;
         }
 
         private List<TLV> ReadTLVRequest(IOwinContext ctx)
@@ -76,7 +102,11 @@ namespace HomeKitAccessory
         {
             var req = ReadTLVRequest(ctx);
             var res = pairState.HandlePairVerifyRequest(req, out PairSetupState newState);
-            if (newState != null) pairState = newState;
+            if (newState != null)
+            {
+                pairState = newState;
+                newState.UpdateEnvironment(ctx.Environment);
+            }
             return TLVResponse(ctx, res);
         }
 

@@ -15,6 +15,9 @@ namespace HomeKitAccessory.PairSetupStates
             throw new InvalidOperationException("Pair verify is not permitted in current state");
         }
 
+        public virtual void UpdateEnvironment(IDictionary<string, object> env)
+        { }
+
         protected Server server;
 
         public PairSetupState(Server server)

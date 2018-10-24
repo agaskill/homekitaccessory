@@ -86,7 +86,7 @@ namespace HomeKitAccessory
         public Task Run()
         {
             bonjourProvider.Advertise(DiscoveryInfo);
-            server = new HttpServer(callback => new HapConnection(this, callback));
+            server = new HttpServer(conn => new HapConnection(this, conn));
 
             return server.Listen(ServerInfo.Port);
         }

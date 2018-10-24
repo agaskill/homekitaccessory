@@ -201,8 +201,12 @@ namespace HomeKitAccessory
 
         public static byte[] Decrypt(byte[] ciphertext, byte[] ad, byte[] nonce, Key key)
         {
+            if (nonce == null)
+                throw new ArgumentNullException(nameof(nonce));
             if (nonce.Length != 12)
                 throw new ArgumentException(nameof(nonce));
+            if (key == null)
+                throw new ArgumentNullException(nameof(key));
             if (key.Data.Length != 32)
                 throw new ArgumentException(nameof(key));
             if (ciphertext == null)

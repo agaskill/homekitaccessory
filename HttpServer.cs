@@ -9,6 +9,7 @@ namespace HomeKitAccessory
     using System.Threading;
     using System.Threading.Tasks;
     using Microsoft.Owin;
+    using Newtonsoft.Json;
     using Newtonsoft.Json.Linq;
     using AppFunc = System.Func<System.Collections.Generic.IDictionary<string, object>, System.Threading.Tasks.Task>;
 
@@ -17,9 +18,9 @@ namespace HomeKitAccessory
         private volatile bool running;
         TcpListener tcpServer;
 
-        private Func<Action<JObject>, OwinMiddleware> middlewareFactory;
+        private Func<IHttpConnection, OwinMiddleware> middlewareFactory;
 
-        public HttpServer(Func<Action<JObject>, OwinMiddleware> middlewareFactory)
+        public HttpServer(Func<IHttpConnection, OwinMiddleware> middlewareFactory)
         {
             this.middlewareFactory = middlewareFactory;
         }
@@ -40,13 +41,19 @@ namespace HomeKitAccessory
                 {
                     break;
                 }
-                Task.Run(() => HandleClient(client, middlewareFactory(OnNotification)));
+                var httpConnection = new HttpConnection(client, middlewareFactory);
+                new Thread(() =>
+                {
+                    try
+                    {
+                        httpConnection.Start();
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine(ex);
+                    }
+                }).Start();
             }
-        }
-
-        private void OnNotification(JObject data)
-        {
-
         }
 
         public void Stop()
@@ -54,42 +61,94 @@ namespace HomeKitAccessory
             running = false;
             tcpServer.Stop();
         }
+    }
 
-        private async Task HandleClient(TcpClient client, OwinMiddleware middleware)
+    public interface IHttpConnection
+    {
+        void SendEvent(JObject data);
+    }
+
+    class HttpConnection : IHttpConnection
+    {
+        private TcpClient client;
+        private Stream stream;
+        private OwinMiddleware middleware;
+        byte[] readBuffer = new byte[102400];
+        int readPos = 0;
+        private object sendLock = new object();
+
+        public HttpConnection(TcpClient client, Func<IHttpConnection, OwinMiddleware> middlewareFactory)
+        {
+            this.client = client;
+            stream = client.GetStream();
+            middleware = middlewareFactory(this);
+        }
+
+        public void SendEvent(JObject data)
+        {
+            var bodyms = new MemoryStream();
+            var sw = new StreamWriter(bodyms);
+            var jw = new JsonTextWriter(sw);
+            data.WriteTo(jw);
+            jw.Flush();
+            bodyms.Position = 0;
+
+            var ms = new MemoryStream();
+            sw = new StreamWriter(ms);
+            sw.NewLine = "\r\n";
+            sw.WriteLine("EVENT/1.0 200 OK");
+            sw.WriteLine("Date: {0:r}", DateTime.UtcNow);
+            sw.WriteLine("Content-Type: application/hap+json");
+            sw.WriteLine("Content-Length: {0}", bodyms.Length);
+            sw.WriteLine();
+            sw.Flush();
+
+            bodyms.CopyTo(ms);
+            ms.Position = 0;
+
+            lock (sendLock)
+            {
+                ms.CopyTo(stream);
+            }
+        }
+
+        public void Start()
         {
             Console.WriteLine("Connection from {0}", client.Client.RemoteEndPoint);
-            var stream = client.GetStream();
-            byte[] buffer = new byte[102400];
-            var pos = 0;
             for(;;)
             {
-                var readlen = await stream.ReadAsync(buffer, pos, buffer.Length - pos);
+                var readlen = stream.Read(readBuffer, readPos, readBuffer.Length - readPos);
                 if (readlen == 0) break;
                 Console.WriteLine("Read {0} bytes from client", readlen);
-                pos += readlen;
-                Console.WriteLine("Total bytes in buffer {0}", pos);
-                for (var i = 0; i < pos - 3; i++) {
-                    if (buffer[i] == 0x0d && buffer[i + 1] == 0x0a && buffer[i + 2] == 0x0d && buffer[i + 3] == 0x0a)
+                readPos += readlen;
+                Console.WriteLine("Total bytes in buffer {0}", readPos);
+                for (var i = 0; i < readPos - 3; i++) {
+                    if (readBuffer[i] == 0x0d && readBuffer[i + 1] == 0x0a && readBuffer[i + 2] == 0x0d && readBuffer[i + 3] == 0x0a)
                     {
                         // Complete header block available
                         var headerEnd = i + 4;
                         Console.WriteLine("Headers {0} bytes", headerEnd);
-                        var reader = new StreamReader(new MemoryStream(buffer, 0, headerEnd));
-                        var requestLine = reader.ReadLine().Split(' ');
-                        Console.WriteLine("requestLine: {0}", requestLine);
+                        var reader = new StreamReader(new MemoryStream(readBuffer, 0, headerEnd));
+                        var requestLineRaw = reader.ReadLine();
+                        Console.WriteLine("requestLine: " + requestLineRaw);
+                        var requestLine = requestLineRaw.Split(' ');
                         var requestMethod = requestLine[0];
-                        var url = new Uri(requestLine[1]);
+                        var pathAndQuery = requestLine[1].Split('?', 2);
                         var requestProtocol = requestLine[2];
+                        Console.WriteLine("Method: " + requestMethod);
+                        Console.WriteLine("Path: " + requestLine[1]);
+                        Console.WriteLine("Protocol: " + requestProtocol);
                         var ctx = new OwinContext();
                         var responseBody = new MemoryStream();
                         ctx.Request.Scheme = "http";
                         ctx.Request.Method = requestMethod;
-                        ctx.Request.Path = new PathString(url.AbsolutePath);
+                        ctx.Request.Path = new PathString(pathAndQuery[0]);
                         ctx.Request.PathBase = new PathString();
                         ctx.Request.Protocol = requestProtocol;
-                        ctx.Request.QueryString = string.IsNullOrEmpty(url.Query) ?
-                            new QueryString() :
-                            new QueryString(url.Query.Substring(1));
+                        if (pathAndQuery.Length > 1)
+                            ctx.Request.QueryString = new QueryString(pathAndQuery[1]);
+                        else
+                            ctx.Request.QueryString = new QueryString();
                         ctx.Response.Body = responseBody;
                         ctx.Request.CallCancelled = new CancellationToken();
                         ctx.Response.Headers.Append("Server", "EventedHttpServer");
@@ -110,10 +169,10 @@ namespace HomeKitAccessory
 
                         if (contentLength > 0) {
                             Console.WriteLine("Reading {0} bytes of body", contentLength);
-                            Console.WriteLine("{0} bytes already read", pos - headerEnd);
+                            Console.WriteLine("{0} bytes already read", readPos - headerEnd);
                             var body = new byte[contentLength];
-                            Array.Copy(buffer, headerEnd, body, 0, pos - headerEnd);
-                            contentLength -= (pos - headerEnd);
+                            Array.Copy(readBuffer, headerEnd, body, 0, readPos - headerEnd);
+                            contentLength -= (readPos - headerEnd);
                             while (contentLength > 0) {
                                 readlen = stream.Read(body, body.Length - contentLength, contentLength);
                                 Console.WriteLine("Read {0} bytes of body", readlen);
@@ -129,7 +188,7 @@ namespace HomeKitAccessory
                         Console.WriteLine("Calling app function");
                         try
                         {
-                            await middleware.Invoke(ctx);
+                            middleware.Invoke(ctx).Wait();
                             Console.WriteLine("App function complete");
                         }
                         catch (Exception ex)
@@ -169,16 +228,24 @@ namespace HomeKitAccessory
                         rw.Flush();
 
                         ms.Position = 0;
-
-                        await ms.CopyToAsync(stream);
-
                         responseBody.Position = 0;
 
-                        await responseBody.CopyToAsync(stream);
+                        lock (sendLock)
+                        {
+                            ms.CopyTo(stream);
+                            responseBody.CopyTo(stream);
+                        }
 
                         Console.WriteLine("Request complete");
 
-                        pos = 0;
+                        if (ctx.Environment.TryGetValue("hap.ReadKey", out object readKey) &&
+                            ctx.Environment.TryGetValue("hap.WriteKey", out object writeKey))
+                        {
+                            Console.WriteLine("Setting encryption keys");
+                            stream = new HapEncryptedStream(stream, (Sodium.Key)readKey, (Sodium.Key)writeKey);
+                        }
+
+                        readPos = 0;
                         continue;
                     }
                 }

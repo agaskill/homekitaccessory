@@ -8,8 +8,11 @@ namespace HomeKitAccessory.GarageDoor
     public class Genie : Accessory
     {
         private List<Characteristic> characteristics;
+        private List<Service> services;
 
         public override IEnumerable<Characteristic> Characteristics => characteristics;
+
+        public override IEnumerable<Service> Services => services;
 
         public Genie() {
             characteristics.Add(new Characteristic(

@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 namespace HomeKitAccessory.PairSetupStates
 {
     class Verified : PairSetupState
@@ -13,6 +15,12 @@ namespace HomeKitAccessory.PairSetupStates
         {
             AccessoryToControllerKey = accessoryToControllerKey;
             ControllerToAccessoryKey = controllerToAccessoryKey;
+        }
+
+        public override void UpdateEnvironment(IDictionary<string, object> env)
+        {
+            env["hap.ReadKey"] = ControllerToAccessoryKey;
+            env["hap.WriteKey"] = AccessoryToControllerKey;
         }
     }
 }
