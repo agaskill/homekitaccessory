@@ -11,7 +11,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\srpauth\SRPAuth\SRPAuth.csproj" />
+    <ProjectReference Include="..\SRPAuth\SRPAuth.csproj" />
   </ItemGroup>
 
 </Project>
