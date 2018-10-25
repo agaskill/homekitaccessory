@@ -1,4 +1,4 @@
-namespace HomeKitAccessory
+namespace HomeKitAccessory.Net
 {
     using System;
 

@@ -2,8 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using HomeKitAccessory.Data;
 
-namespace HomeKitAccessory.PairSetupStates
+namespace HomeKitAccessory.Net.PairSetupStates
 {
     class PairSetupState4 : PairSetupState
     {
@@ -15,13 +16,13 @@ namespace HomeKitAccessory.PairSetupStates
             this.srpKey = srpKey;
         }
 
-        public override List<TLV> HandlePairSetupRequest(List<TLV> request, out PairSetupState newState)
+        public override TLVCollection HandlePairSetupRequest(TLVCollection request, out PairSetupState newState)
         {
             Console.WriteLine("Handling pair setup request in state 4");
-            var state = GetState(request);
+            var state = request.State;
             if (state != 5)
                 throw new InvalidOperationException("Invalid request state " + state);
-            var deviceEncryptedData = request.Find(x => x.Tag == TLVType.EncryptedData).DataValue;
+            var deviceEncryptedData = request.Find(TLVType.EncryptedData).DataValue;
 
             var sessionKey = new Sodium.Key(HKDF.SHA512(srpKey,
                 "Pair-Setup-Encrypt-Salt",
@@ -35,10 +36,10 @@ namespace HomeKitAccessory.PairSetupStates
 
             Console.WriteLine("Decrypted device data");
 
-            var deviceSubTLV = TLV.Deserialize(devicePlainData);
-            var deviceId = deviceSubTLV.Find(x => x.Tag == TLVType.Identifier).DataValue;
-            var deviceLTPK = new Sodium.Ed25519PublicKey(deviceSubTLV.Find(x => x.Tag == TLVType.PublicKey).DataValue);
-            var deviceSignature = deviceSubTLV.Find(x => x.Tag == TLVType.Signature).DataValue;
+            var deviceSubTLV = TLVCollection.Deserialize(devicePlainData);
+            var deviceId = deviceSubTLV.Find(TLVType.Identifier).DataValue;
+            var deviceLTPK = new Sodium.Ed25519PublicKey(deviceSubTLV.Find(TLVType.PublicKey).DataValue);
+            var deviceSignature = deviceSubTLV.Find(TLVType.Signature).DataValue;
 
             var iosDeviceX = HKDF.SHA512(
                 srpKey,
@@ -55,7 +56,7 @@ namespace HomeKitAccessory.PairSetupStates
             {
                 Console.WriteLine("Signature verification failed");
                 newState = null;
-                return new List<TLV>() {
+                return new TLVCollection() {
                     new TLV(TLVType.State, 6),
                     new TLV(TLVType.Error, TLVError.Authentication)
                 };
@@ -78,11 +79,11 @@ namespace HomeKitAccessory.PairSetupStates
             accessoryInfo.Write(accessoryLongTerm.PublicKey.Data);
             var signature = Sodium.SignDetached(accessoryInfo.ToArray(), accessoryLongTerm.SecretKey);
 
-            var subtlv = TLV.Serialize(new List<TLV>() {
+            var subtlv = new TLVCollection() {
                 new TLV(TLVType.Identifier, server.PairingId),
                 new TLV(TLVType.PublicKey, accessoryLongTerm.PublicKey.Data),
                 new TLV(TLVType.Signature, signature)
-            });
+            }.Serialize();
 
             var encdata = Sodium.Encrypt(subtlv, null,
                 "PS-Msg06", sessionKey);
@@ -91,7 +92,7 @@ namespace HomeKitAccessory.PairSetupStates
 
             newState = new Initial(server);
 
-            return new List<TLV>() {
+            return new TLVCollection() {
                 new TLV(TLVType.State, 6),
                 new TLV(TLVType.EncryptedData, encdata)
             };

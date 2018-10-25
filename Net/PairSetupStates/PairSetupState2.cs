@@ -1,7 +1,8 @@
 using System;
 using System.Collections.Generic;
+using HomeKitAccessory.Data;
 
-namespace HomeKitAccessory.PairSetupStates
+namespace HomeKitAccessory.Net.PairSetupStates
 {
     class PairSetupState2 : PairSetupState
     {
@@ -13,16 +14,16 @@ namespace HomeKitAccessory.PairSetupStates
             this.sRPServer = sRPServer;
         }
 
-        public override List<TLV> HandlePairSetupRequest(List<TLV> request, out PairSetupState newState)
+        public override TLVCollection HandlePairSetupRequest(TLVCollection request, out PairSetupState newState)
         {
             Console.WriteLine("Handling pair setup request in state 2");
 
-            var state = GetState(request);
+            var state = request.State;
             if (state != 3)
                 throw new InvalidOperationException("Invalid request state " + state);
 
-            var devicePublic = request.Find(x => x.Tag == TLVType.PublicKey).DataValue;
-            var deviceProof = request.Find(x => x.Tag == TLVType.Proof).DataValue;
+            var devicePublic = request.Find(TLVType.PublicKey).DataValue;
+            var deviceProof = request.Find(TLVType.Proof).DataValue;
 
             //TODO: Verify client proof
 
@@ -34,7 +35,7 @@ namespace HomeKitAccessory.PairSetupStates
 
             Console.WriteLine("Sending state 4 response");
 
-            return new List<TLV>() {
+            return new TLVCollection() {
                 new TLV(TLVType.State, 4),
                 new TLV(TLVType.Proof, serverProof)
             };

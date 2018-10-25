@@ -1,7 +1,7 @@
 using System;
 using System.IO;
 
-namespace HomeKitAccessory
+namespace HomeKitAccessory.Net
 {
     class HapEncryptedStream : Stream
     {

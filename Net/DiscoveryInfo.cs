@@ -1,6 +1,6 @@
 using System;
 
-namespace HomeKitAccessory
+namespace HomeKitAccessory.Net
 {
     public class DiscoveryInfo
     {

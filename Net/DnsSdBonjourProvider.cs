@@ -1,6 +1,6 @@
 using System.Diagnostics;
 
-namespace HomeKitAccessory
+namespace HomeKitAccessory.Net
 {
     public class DnsSdBonjourProvider : IBonjourProvider
     {

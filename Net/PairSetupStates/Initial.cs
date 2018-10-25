@@ -3,41 +3,42 @@ using System.Collections.Generic;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
+using HomeKitAccessory.Data;
 
-namespace HomeKitAccessory.PairSetupStates
+namespace HomeKitAccessory.Net.PairSetupStates
 {
     class Initial : PairSetupState
     {
         public Initial(Server server)
             : base(server) {}
         
-        public override List<TLV> HandlePairSetupRequest(List<TLV> request, out PairSetupState newState)
+        public override TLVCollection HandlePairSetupRequest(TLVCollection request, out PairSetupState newState)
         {
-            var state = GetState(request);
+            var state = request.State;
             if (state != 1)
                 throw new InvalidOperationException("Invalid request state");
-            var method = (int)request.Find(x => x.Tag == TLVType.Method).IntegerValue;
+            var method = (int)request.Find(TLVType.Method).IntegerValue;
             if (method != 0 && method != 1)
                 throw new InvalidOperationException(string.Format("Invalid method {0}", method));
             var srpServer = new SRPAuth.SRPServer(new PairSetupUserStore(server.SetupCode), SHA512.Create());
             var userVerifier = srpServer.ClientHello("Pair-Setup");
             Console.WriteLine("Sending state 2 response");
             newState = new PairSetupState2(server, srpServer);
-            return new List<TLV>() {
+            return new TLVCollection() {
                 new TLV(TLVType.State, 2),
                 new TLV(TLVType.PublicKey, userVerifier.ServerPublic),
                 new TLV(TLVType.Salt, userVerifier.Salt)
             };
         }
 
-        public override List<TLV> HandlePairVerifyRequest(List<TLV> request, out PairSetupState newState)
+        public override TLVCollection HandlePairVerifyRequest(TLVCollection request, out PairSetupState newState)
         {
             Console.WriteLine("initial pair verify request received");
 
-            var state = GetState(request);
+            var state = request.State;
             if (state != 1)
                 throw new InvalidOperationException("Invalid request state");
-            var deviceSessionPublicKey = new Sodium.Curve25519PublicKey(TLV.Find(request, TLVType.PublicKey).DataValue);
+            var deviceSessionPublicKey = new Sodium.Curve25519PublicKey(request.Find(TLVType.PublicKey).DataValue);
             Console.WriteLine("Device's Curve25519 public key is " + BitConverter.ToString(deviceSessionPublicKey.Data));
 
             var accessorySession = new Sodium.Curve25519Keypair();
@@ -59,9 +60,10 @@ namespace HomeKitAccessory.PairSetupStates
 
             Console.WriteLine("Generated signature " + BitConverter.ToString(accessorySignature));
 
-            var subTlv = TLV.Serialize(
+            var subTlv = new TLVCollection() {
                 new TLV(TLVType.Identifier, server.PairingId),
-                new TLV(TLVType.Signature, accessorySignature));
+                new TLV(TLVType.Signature, accessorySignature)
+            }.Serialize();
             
             var sessionKey = new Sodium.Key(HKDF.SHA512(
                 sharedSecret.Data,
@@ -91,7 +93,7 @@ namespace HomeKitAccessory.PairSetupStates
                 controlReadKey, controlWriteKey,
                 deviceSessionPublicKey, accessorySession.PublicKey);
 
-            return new List<TLV>() {
+            return new TLVCollection() {
                 new TLV(TLVType.State, 2),
                 new TLV(TLVType.PublicKey, accessorySession.PublicKey.Data),
                 new TLV(TLVType.EncryptedData, encryptedData)

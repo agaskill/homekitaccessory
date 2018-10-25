@@ -30,7 +30,7 @@ namespace HomeKitAccessory
 
             var pairingDb = new PairingDatabase();
             pairingDb.LoadOrInitialize();
-            var bonjourProvider = new DnsSdBonjourProvider();
+            var bonjourProvider = new Net.DnsSdBonjourProvider();
             //var bonjourProvider = new MockBonjourProvider();
             var serverInfo = new ServerInfo
             {

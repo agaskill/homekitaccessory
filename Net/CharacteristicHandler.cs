@@ -10,7 +10,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System.Diagnostics;
 
-namespace HomeKitAccessory
+namespace HomeKitAccessory.Net
 {
     public class CharacteristicHandler : IDisposable
     {

@@ -1,6 +1,6 @@
 using Newtonsoft.Json.Linq;
 
-namespace HomeKitAccessory
+namespace HomeKitAccessory.Net
 {
     public class HapResponse
     {

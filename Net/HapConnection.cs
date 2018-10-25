@@ -4,10 +4,11 @@ using System.IO;
 using System.Threading.Tasks;
 using Microsoft.Owin;
 using Newtonsoft.Json.Linq;
-using HomeKitAccessory.PairSetupStates;
+using HomeKitAccessory.Net.PairSetupStates;
 using Newtonsoft.Json;
+using HomeKitAccessory.Data;
 
-namespace HomeKitAccessory
+namespace HomeKitAccessory.Net
 {
     public class HapConnection : OwinMiddleware, IDisposable
     {
@@ -74,16 +75,16 @@ namespace HomeKitAccessory
             return Task.CompletedTask;
         }
 
-        private List<TLV> ReadTLVRequest(IOwinContext ctx)
+        private TLVCollection ReadTLVRequest(IOwinContext ctx)
         {
             if (ctx.Request.ContentType != "application/pairing+tlv8")
                 throw new InvalidOperationException("Expected TLV content type");
-            return TLV.Deserialize(ctx.Request.Body);
+            return TLVCollection.Deserialize(ctx.Request.Body);
         }
 
-        private Task TLVResponse(IOwinContext ctx, List<TLV> tLVs)
+        private Task TLVResponse(IOwinContext ctx, TLVCollection tLVs)
         {
-            var body = TLV.Serialize(tLVs);
+            var body = tLVs.Serialize();
             ctx.Response.ContentType = "application/pairing+tlv8";
             ctx.Response.ContentLength = body.Length;
             ctx.Response.Body.Write(body);

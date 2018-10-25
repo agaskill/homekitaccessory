@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace HomeKitAccessory.PairSetupStates
+namespace HomeKitAccessory.Net.PairSetupStates
 {
     class Verified : PairSetupState
     {
