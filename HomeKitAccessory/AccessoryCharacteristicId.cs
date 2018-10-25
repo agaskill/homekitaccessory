@@ -4,9 +4,9 @@ namespace HomeKitAccessory
 {
     public struct AccessoryCharacteristicId : IEquatable<AccessoryCharacteristicId>
     {
-        public int AccessoryId;
-        public int InstanceId;
-        public AccessoryCharacteristicId(int accessoryId, int instanceId)
+        public ulong AccessoryId;
+        public ulong InstanceId;
+        public AccessoryCharacteristicId(ulong accessoryId, ulong instanceId)
         {
             AccessoryId = accessoryId;
             InstanceId = instanceId;

@@ -2,27 +2,27 @@ namespace HomeKitAccessory.Net
 {
     using System;
     using System.Collections.Generic;
+    using System.Collections.Specialized;
     using System.IO;
     using System.Net;
     using System.Net.Sockets;
     using System.Text;
     using System.Threading;
     using System.Threading.Tasks;
-    using Microsoft.Owin;
+    using HomeKitAccessory.Data;
+    using HomeKitAccessory.Net.PairSetupStates;
     using Newtonsoft.Json;
     using Newtonsoft.Json.Linq;
-    using AppFunc = System.Func<System.Collections.Generic.IDictionary<string, object>, System.Threading.Tasks.Task>;
 
     class HttpServer
     {
         private volatile bool running;
-        TcpListener tcpServer;
+        private TcpListener tcpServer;
+        private Server server;
 
-        private Func<IHttpConnection, OwinMiddleware> middlewareFactory;
-
-        public HttpServer(Func<IHttpConnection, OwinMiddleware> middlewareFactory)
+        public HttpServer(Server server)
         {
-            this.middlewareFactory = middlewareFactory;
+            this.server = server;
         }
 
         public async Task Listen(int port)
@@ -41,7 +41,7 @@ namespace HomeKitAccessory.Net
                 {
                     break;
                 }
-                var httpConnection = new HttpConnection(client, middlewareFactory);
+                var httpConnection = new HttpConnection(server, client);
                 new Thread(() =>
                 {
                     try
@@ -63,33 +63,31 @@ namespace HomeKitAccessory.Net
         }
     }
 
-    public interface IHttpConnection
-    {
-        void SendEvent(JObject data);
-    }
-
-    class HttpConnection : IHttpConnection
+    class HttpConnection
     {
         private TcpClient client;
         private Stream stream;
-        private OwinMiddleware middleware;
         byte[] readBuffer = new byte[102400];
         int readPos = 0;
         private object sendLock = new object();
+        private PairSetupState pairState;
+        private Server server;
+        private CharacteristicHandler characteristicHandler;
 
-        public HttpConnection(TcpClient client, Func<IHttpConnection, OwinMiddleware> middlewareFactory)
+        public HttpConnection(Server server, TcpClient client)
         {
+            this.server = server;
             this.client = client;
             stream = client.GetStream();
-            middleware = middlewareFactory(this);
+            pairState = new Initial(server);
         }
 
-        public void SendEvent(JObject data)
+        public void SendEvent(HapNotification data)
         {
             var bodyms = new MemoryStream();
             var sw = new StreamWriter(bodyms);
             var jw = new JsonTextWriter(sw);
-            data.WriteTo(jw);
+            JObject.FromObject(data).WriteTo(jw);
             jw.Flush();
             bodyms.Position = 0;
 
@@ -112,6 +110,21 @@ namespace HomeKitAccessory.Net
             }
         }
 
+        public static NameValueCollection ParseQueryString(string queryString)
+        {
+            var qs = new NameValueCollection();
+            foreach (var item in queryString.Split('&'))
+            {
+                var kv = item.Split('=');
+                qs.Add(
+                    Uri.UnescapeDataString(kv[0]),
+                    kv.Length > 1 ?
+                        Uri.UnescapeDataString(kv[1]) :
+                        "");
+            }
+            return qs;
+        }
+
         public void Start()
         {
             Console.WriteLine("Connection from {0}", client.Client.RemoteEndPoint);
@@ -131,27 +144,23 @@ namespace HomeKitAccessory.Net
                         var reader = new StreamReader(new MemoryStream(readBuffer, 0, headerEnd));
                         var requestLineRaw = reader.ReadLine();
                         Console.WriteLine("requestLine: " + requestLineRaw);
+                        var req = new HttpRequest();
                         var requestLine = requestLineRaw.Split(' ');
-                        var requestMethod = requestLine[0];
+                        req.Method = requestLine[0];
                         var pathAndQuery = requestLine[1].Split('?', 2);
+                        req.Path = pathAndQuery[0];
+                        req.QueryString = pathAndQuery.Length > 1 ? ParseQueryString(pathAndQuery[1]) : null;
                         var requestProtocol = requestLine[2];
-                        Console.WriteLine("Method: " + requestMethod);
-                        Console.WriteLine("Path: " + requestLine[1]);
-                        Console.WriteLine("Protocol: " + requestProtocol);
-                        var ctx = new OwinContext();
-                        var responseBody = new MemoryStream();
-                        ctx.Request.Scheme = "http";
-                        ctx.Request.Method = requestMethod;
-                        ctx.Request.Path = new PathString(pathAndQuery[0]);
-                        ctx.Request.PathBase = new PathString();
-                        ctx.Request.Protocol = requestProtocol;
-                        if (pathAndQuery.Length > 1)
-                            ctx.Request.QueryString = new QueryString(pathAndQuery[1]);
-                        else
-                            ctx.Request.QueryString = new QueryString();
-                        ctx.Response.Body = responseBody;
-                        ctx.Request.CallCancelled = new CancellationToken();
-                        ctx.Response.Headers.Append("Server", "EventedHttpServer");
+
+                        if (requestProtocol != "HTTP/1.1")
+                        {
+                            client.Dispose();
+                            throw new InvalidOperationException("Unsupported protocol " + requestProtocol);
+                        }
+
+                        Console.WriteLine("Method: " + req.Method);
+                        Console.WriteLine("Path: " + req.Path);
+                        Console.WriteLine("Path and Query: " + requestLine[1]);
 
                         var headerLine = reader.ReadLine();
                         int contentLength = 0;
@@ -160,17 +169,22 @@ namespace HomeKitAccessory.Net
                             var header = headerLine.Split(':', 2);
                             var headerName = header[0].Trim();
                             var headerValue = header[1].Trim();
-                            if (StringComparer.OrdinalIgnoreCase.Equals(headerName, "Content-Length")) {
+                            if (StringComparer.OrdinalIgnoreCase.Equals(headerName, "Content-Length"))
+                            {
                                 contentLength = int.Parse(headerValue);
                             }
-                            ctx.Request.Headers.Append(headerName, headerValue);
+                            else
+                            {
+                                req.RequestHeaders.Add(headerName, headerValue);
+                            }
                             headerLine = reader.ReadLine();
                         }
 
+                        byte[] body;
                         if (contentLength > 0) {
                             Console.WriteLine("Reading {0} bytes of body", contentLength);
                             Console.WriteLine("{0} bytes already read", readPos - headerEnd);
-                            var body = new byte[contentLength];
+                            body = new byte[contentLength];
                             Array.Copy(readBuffer, headerEnd, body, 0, readPos - headerEnd);
                             contentLength -= (readPos - headerEnd);
                             while (contentLength > 0) {
@@ -179,67 +193,82 @@ namespace HomeKitAccessory.Net
                                 if (readlen == 0) throw new EndOfStreamException();
                                 contentLength -= readlen;
                             }
-                            ctx.Request.Body = new MemoryStream(body);
                         } else {
                             Console.WriteLine("No body content");
-                            ctx.Request.Body = Stream.Null;
+                            body = new byte[0];
                         }
 
-                        Console.WriteLine("Calling app function");
+                        req.Body = body;
+
+                        var res = new HttpResponse();
+
                         try
                         {
-                            middleware.Invoke(ctx).Wait();
-                            Console.WriteLine("App function complete");
+                            Console.WriteLine("Dispatching request");
+                            DispatchRequest(req, res);
+                            Console.WriteLine("Request complete");
+                        }
+                        catch (HttpException ex)
+                        {
+                            Console.WriteLine(ex);
+                            res.StatusCode = ex.StatusCode;
+                            res.StatusPhrase = ex.Message;
+                            res.Body = Encoding.UTF8.GetBytes(ex.ToString());
+                            res.ResponseHeaders.Clear();
+                            res.ResponseHeaders["Content-Type"] = "text/plain";
                         }
                         catch (Exception ex)
                         {
                             Console.WriteLine(ex);
-                            ctx.Response.StatusCode = 500;
-                            ctx.Response.ReasonPhrase = ex.Message;
-                            responseBody = new MemoryStream(Encoding.UTF8.GetBytes(ex.ToString()));
-                            ctx.Response.ContentLength = responseBody.Length;
-                            ctx.Response.ContentType = "text/plain";
+                            res.StatusCode = 500;
+                            res.StatusPhrase = "Internal server error";
+                            res.Body = Encoding.UTF8.GetBytes(ex.ToString());
+                            res.ResponseHeaders.Clear();
+                            res.ResponseHeaders["Content-Type"] = "text/plain";
                         }
+
+                        res.ResponseHeaders["Server"] = "EventedHttpServer";
+                        res.ResponseHeaders["Date"] = DateTime.UtcNow.ToString("r");
 
                         var ms = new MemoryStream();
                         var rw = new StreamWriter(ms);
                         rw.NewLine = "\r\n";
 
-                        var responseProtocol = ctx.Response.Protocol ?? ctx.Request.Protocol;
-
-                        rw.Write(ctx.Response.Protocol ?? ctx.Request.Protocol);
-                        rw.Write(" ");
-                        rw.Write(ctx.Response.StatusCode);
-                        if (!string.IsNullOrWhiteSpace(ctx.Response.ReasonPhrase)) {
+                        rw.Write("HTTP/1.1 ");
+                        rw.Write(res.StatusCode);
+                        if (!string.IsNullOrWhiteSpace(res.StatusPhrase)) {
                             rw.Write(" ");
-                            rw.Write(ctx.Response.ReasonPhrase);
+                            rw.Write(res.StatusPhrase);
                         }
                         rw.WriteLine();
-                        foreach (var headerkv in ctx.Response.Headers)
+                        foreach (string header in res.ResponseHeaders)
                         {
-                            foreach (var headerValue in headerkv.Value) {
-                                rw.Write(headerkv.Key);
+                            foreach (var headerValue in res.ResponseHeaders.GetValues(header)) {
+                                rw.Write(header);
                                 rw.Write(": ");
                                 rw.WriteLine(headerValue);
                             }
                         }
+                        rw.WriteLine("Content-Length: " + (res.Body?.Length ?? 0));
                         rw.WriteLine();
 
                         rw.Flush();
 
                         ms.Position = 0;
-                        responseBody.Position = 0;
 
                         lock (sendLock)
                         {
                             ms.CopyTo(stream);
-                            responseBody.CopyTo(stream);
+                            if (res.Body != null)
+                            {
+                                stream.Write(res.Body);
+                            }
                         }
 
                         Console.WriteLine("Request complete");
 
-                        if (ctx.Environment.TryGetValue("hap.ReadKey", out object readKey) &&
-                            ctx.Environment.TryGetValue("hap.WriteKey", out object writeKey))
+                        if (res.Context.TryGetValue("hap.ReadKey", out object readKey) &&
+                            res.Context.TryGetValue("hap.WriteKey", out object writeKey))
                         {
                             Console.WriteLine("Setting encryption keys");
                             stream = new HapEncryptedStream(stream, (Sodium.Key)readKey, (Sodium.Key)writeKey);
@@ -253,6 +282,171 @@ namespace HomeKitAccessory.Net
 
             client.Dispose();
             Console.WriteLine("Client disconnect normally");
+        }
+
+        private void DispatchRequest(HttpRequest req, HttpResponse res)
+        {
+            if (req.Path == "/pair-setup")
+            {
+                HandlePairSetup(req, res);
+            }
+            else if (req.Path == "/pair-verify")
+            {
+                HandlePairVerify(req, res);
+            }
+            else if (req.Path == "/accessories")
+            {
+                HandleAccessoryDatabase(req, res);
+            }
+            else if (req.Path == "/characteristics")
+            {
+                HandleCharacteristics(req, res);
+            }
+            else if (req.Path == "/identify")
+            {
+                HandleIdentify(req, res);
+            }
+            else
+            {
+                throw new HttpException(404, "Not found");
+            }
+        }
+        
+        private TLVCollection GetRequestTLV(HttpRequest request)
+        {
+            if (request.Method != "POST")
+                throw new HttpException(405, "Method not allowed");
+            if (request.RequestHeaders["Content-Type"] != "application/pairing+tlv8")
+                throw new HttpException(415, "Unsupported media type");
+            return TLVCollection.Deserialize(request.Body);
+        }
+
+        private void SetResponseTLV(HttpResponse response, TLVCollection tLVs)
+        {
+            response.StatusCode = 200;
+            response.StatusPhrase = "Ok";
+            response.ResponseHeaders["Content-Type"] = "application/pairing+tlv8";
+            response.Body = tLVs.Serialize();
+        }
+
+        private void HandlePairSetup(HttpRequest request, HttpResponse response)
+        {
+            var tlvRequest = GetRequestTLV(request);
+
+            var tlvResponse = pairState.HandlePairSetupRequest(tlvRequest, out PairSetupState newState);
+
+            if (newState != null)
+            {
+                pairState = newState;
+            }
+
+            SetResponseTLV(response, tlvResponse);
+        }
+
+        private void HandlePairVerify(HttpRequest request, HttpResponse response)
+        {
+            var tlvRequest = GetRequestTLV(request);
+
+            var tlvResponse = pairState.HandlePairVerifyRequest(tlvRequest, out PairSetupState newState);
+
+            if (newState != null)
+            {
+                pairState = newState;
+                newState.UpdateEnvironment(response.Context);
+            }
+
+            SetResponseTLV(response, tlvResponse);
+        }
+
+        private const string HapContentType = "application/hap+json";
+        private void SetHapResponse(HttpResponse response, HapResponse data)
+        {
+            response.StatusCode = data.Status;
+            response.ResponseHeaders["Content-Type"] = HapContentType;
+            var ms = new MemoryStream();
+            var sw = new StreamWriter(ms);
+            var jw = new JsonTextWriter(sw);
+            data.Body.WriteTo(jw);
+            jw.Flush();
+            response.Body = ms.ToArray();
+        }
+
+        private void HandleIdentify(HttpRequest request, HttpResponse response)
+        {
+            if (server.IsPaired)
+            {
+                SetHapResponse(response, new HapResponse {
+                    Status = 400,
+                    Body = new JObject() { "status", -70401 }
+                });
+            }
+            else
+            {
+                server.Identify();
+                response.StatusCode = 204;
+            }
+        }
+
+        private void HandleAccessoryDatabase(HttpRequest request, HttpResponse response)
+        {
+            if (pairState is Verified)
+            {
+                if (request.Method != "GET")
+                    throw new HttpException(405, "Not implemented");
+                var data = characteristicHandler.GetAccessoryDatabase();
+                SetHapResponse(response, data);
+            }
+            else
+            {
+                SetHapResponse(response, new HapResponse {
+                    Status = 400, 
+                    Body = new JObject() {
+                        { "status", -70401 }
+                    }
+                });
+            }
+        }
+
+        private void HandleCharacteristics(HttpRequest request, HttpResponse response)
+        {
+            if (pairState is Verified)
+            {
+                if (request.Method == "GET")
+                {
+                    var ids = new List<AccessoryCharacteristicId>();
+                    foreach (var id in request.QueryString["id"].Split(','))
+                    {
+                        var idpair = id.Split('.');
+                        ulong aid = ulong.Parse(idpair[0]);
+                        ulong iid = ulong.Parse(idpair[1]);
+                        ids.Add(new AccessoryCharacteristicId(aid, iid));
+                    }
+                    var readRequest = new CharacteristicReadRequest();
+                    readRequest.Ids = ids.ToArray();
+                    readRequest.IncludeEvent = request.QueryString["ev"] == "1";
+                    readRequest.IncludeMeta = request.QueryString["meta"] == "1";
+                    readRequest.IncludePerms = request.QueryString["perms"] == "1";
+                    readRequest.IncludeType = request.QueryString["type"] == "1";
+
+                    var hapResponse = characteristicHandler.HandleCharacteristicReadRequest(readRequest).Result;
+
+                    SetHapResponse(response, hapResponse);
+                }
+                else if (request.Method == "POST")
+                {
+                    var writeRequest = new JsonSerializer().Deserialize<CharacteristicWriteRequest>(
+                        new JsonTextReader(
+                            new StreamReader(
+                                new MemoryStream(request.Body))));
+                    var hapResponse = characteristicHandler.HandleCharacteristicWriteRequest(writeRequest).Result;
+
+                    SetHapResponse(response, hapResponse);
+                }
+                else
+                {
+                    throw new HttpException(405, "Not implemented");
+                }
+            }
         }
     }
 }

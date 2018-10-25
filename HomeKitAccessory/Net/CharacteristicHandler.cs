@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System.Diagnostics;
+using HomeKitAccessory.Core;
 
 namespace HomeKitAccessory.Net
 {
@@ -75,11 +76,11 @@ namespace HomeKitAccessory.Net
             }
         }
 
-        private Characteristic FindCharacteristic(int accessoryId, int instanceId)
+        private Characteristic FindCharacteristic(ulong accessoryId, ulong instanceId)
         {
             var accessory = server.Accessories.FirstOrDefault(a => a.Id == accessoryId);
             if (accessory == null) return null;
-            var characteristic = accessory.Characteristics.FirstOrDefault(c => c.InstanceId == instanceId);
+            var characteristic = accessory.Services.SelectMany(s => s.Characteristics).FirstOrDefault(c => c.Id == instanceId);
             return characteristic;
         }
 

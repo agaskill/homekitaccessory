@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using HomeKitAccessory.Net;
+using HomeKitAccessory.Core;
 
 namespace HomeKitAccessory
 {
@@ -14,11 +15,20 @@ namespace HomeKitAccessory
         public ServerInfo ServerInfo {get; private set;}
         public int ConfigNumber {get;set;}
         public IEnumerable<Accessory> Accessories => accessories.AsReadOnly();
+        public bool IsPaired => PairingDatabase.Pairings.Count > 0;
 
         private IBonjourProvider bonjourProvider;
         private List<Accessory> accessories;
-        
         private HttpServer server;
+
+        public void Identify()
+        {
+            Guid identifyType = StandardCharacteristics.Identify.KnownType;
+            foreach (var accessory in accessories)
+            {
+                accessory.Services.First().Characteristics.First(c => c.Type == identifyType).Value = true;
+            }
+        }
 
         public Server(PairingDatabase pairingDatabase, ServerInfo serverInfo, IBonjourProvider bonjourProvider)
         {
@@ -87,7 +97,7 @@ namespace HomeKitAccessory
         public Task Run()
         {
             bonjourProvider.Advertise(DiscoveryInfo);
-            server = new HttpServer(conn => new HapConnection(this, conn));
+            server = new HttpServer(this);
 
             return server.Listen(ServerInfo.Port);
         }

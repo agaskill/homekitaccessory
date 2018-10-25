@@ -13,10 +13,10 @@ namespace HomeKitAccessory
     public class CharacteristicWriteItem
     {
         [JsonProperty("aid")]
-        public int AccessoryId {get;set;}
+        public ulong AccessoryId {get;set;}
 
         [JsonProperty("iid")]
-        public int InstanceId {get;set;}
+        public ulong InstanceId {get;set;}
 
         [JsonProperty("value")]
         public JToken Value {get;set;}
