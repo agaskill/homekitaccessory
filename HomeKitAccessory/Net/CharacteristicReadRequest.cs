@@ -1,7 +1,8 @@
 using System;
 using Newtonsoft.Json;
+using HomeKitAccessory.Data;
 
-namespace HomeKitAccessory
+namespace HomeKitAccessory.Net
 {
     public class CharacteristicReadRequest
     {

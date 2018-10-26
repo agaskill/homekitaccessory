@@ -1,8 +1,9 @@
 using System.Collections.Generic;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using HomeKitAccessory.Data;
 
-namespace HomeKitAccessory
+namespace HomeKitAccessory.Net
 {
     public class CharacteristicWriteRequest
     {

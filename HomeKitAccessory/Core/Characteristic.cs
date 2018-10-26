@@ -18,6 +18,6 @@ namespace HomeKitAccessory.Core
         public virtual double? MaxLen => null;
         public virtual double? MaxDataLen => null;
         public virtual double[] ValidValues => null;
-        public virtual double[] ValidValuesRange => null;
+        public virtual Tuple<double,double> ValidValuesRange => null;
     }
 }

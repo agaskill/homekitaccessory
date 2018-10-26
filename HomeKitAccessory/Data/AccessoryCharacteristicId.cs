@@ -1,6 +1,6 @@
 using System;
 
-namespace HomeKitAccessory
+namespace HomeKitAccessory.Data
 {
     public struct AccessoryCharacteristicId : IEquatable<AccessoryCharacteristicId>
     {
@@ -14,7 +14,7 @@ namespace HomeKitAccessory
 
         public override string ToString()
         {
-            return $"{{\"aid\":{AccessoryId},\"iid\":{InstanceId}}}";
+            return $"{AccessoryId}.{InstanceId}";
         }
 
         public bool Equals(AccessoryCharacteristicId other)

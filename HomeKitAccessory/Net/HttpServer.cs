@@ -80,14 +80,15 @@ namespace HomeKitAccessory.Net
             this.client = client;
             stream = client.GetStream();
             pairState = new Initial(server);
+            characteristicHandler = new CharacteristicHandler(server, SendEvent);
         }
 
-        public void SendEvent(HapNotification data)
+        public void SendEvent(JObject data)
         {
             var bodyms = new MemoryStream();
             var sw = new StreamWriter(bodyms);
             var jw = new JsonTextWriter(sw);
-            JObject.FromObject(data).WriteTo(jw);
+            data.WriteTo(jw);
             jw.Flush();
             bodyms.Position = 0;
 
@@ -428,7 +429,7 @@ namespace HomeKitAccessory.Net
                     readRequest.IncludePerms = request.QueryString["perms"] == "1";
                     readRequest.IncludeType = request.QueryString["type"] == "1";
 
-                    var hapResponse = characteristicHandler.HandleCharacteristicReadRequest(readRequest).Result;
+                    var hapResponse = characteristicHandler.HandleCharacteristicReadRequest(readRequest);
 
                     SetHapResponse(response, hapResponse);
                 }
@@ -438,7 +439,7 @@ namespace HomeKitAccessory.Net
                         new JsonTextReader(
                             new StreamReader(
                                 new MemoryStream(request.Body))));
-                    var hapResponse = characteristicHandler.HandleCharacteristicWriteRequest(writeRequest).Result;
+                    var hapResponse = characteristicHandler.HandleCharacteristicWriteRequest(writeRequest);
 
                     SetHapResponse(response, hapResponse);
                 }

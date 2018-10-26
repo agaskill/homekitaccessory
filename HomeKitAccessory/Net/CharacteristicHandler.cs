@@ -10,6 +10,8 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System.Diagnostics;
 using HomeKitAccessory.Core;
+using HomeKitAccessory.Data;
+using HomeKitAccessory.Serialization;
 
 namespace HomeKitAccessory.Net
 {
@@ -78,175 +80,327 @@ namespace HomeKitAccessory.Net
 
         private Characteristic FindCharacteristic(ulong accessoryId, ulong instanceId)
         {
-            var accessory = server.Accessories.FirstOrDefault(a => a.Id == accessoryId);
-            if (accessory == null) return null;
-            var characteristic = accessory.Services.SelectMany(s => s.Characteristics).FirstOrDefault(c => c.Id == instanceId);
-            return characteristic;
+            return server.Accessories
+                .FirstOrDefault(a => a.Id == accessoryId)?
+                .Services.SelectMany(s => s.Characteristics)
+                .FirstOrDefault(c => c.Id == instanceId);
         }
 
-        public Task<HapResponse> HandleCharacteristicReadRequest(CharacteristicReadRequest request)
+        private JObject SerializeCharacteristic(
+            Characteristic characteristic,
+            AccessoryCharacteristicId id,
+            bool includeAccessoryId,
+            CharacteristicReadRequest options)
         {
-            var tasks = new List<Task>();
-            var results = new JArray();
-
-            foreach (var id in request.Ids) {
-                var characteristic = FindCharacteristic(id.AccessoryId, id.InstanceId);
-                var result = new JObject();
+            var result = new JObject();
+            if (includeAccessoryId)
+            {
                 result["aid"] = id.AccessoryId;
-                result["iid"] = id.InstanceId;
-                results.Add(result);
-
-                if (characteristic == null) {
-                    result["status"] = -70409;
-                } 
-                else if (characteristic.Read == null) {
-                    result["status"] = -70405;
+            }
+            result["iid"] = characteristic.Id;
+            if (characteristic.CanRead)
+            {
+                result["value"] = JToken.FromObject(characteristic.Value);
+            }
+            if (options.IncludeEvent)
+            {
+                if (subscriptions.ContainsKey(id))
+                {
+                    result["ev"] = false;
                 }
-                else {
-                    if (request.IncludeType) {
-                        result["type"] = HapTypeConverter.Format(characteristic.Type);
-                    }
-                    if (request.IncludePerms) {
-                        result["perms"] = CharacteristicConverter.FormatPerms(characteristic);
-                    }
-                    if (request.IncludeEvent && characteristic.Observable != null) {
-                        result["ev"] = subscriptions.ContainsKey(id);
-                    }
-                    if (request.IncludeMeta) {
-                        CharacteristicConverter.PopulateMeta(characteristic, result);
-                    }
-                    tasks.Add(characteristic.Read().ContinueWith(task => {
-                        if (task.IsFaulted) {
-                            result["status"] = -70407;
-                        }
-                        else {
-                            result["status"] = 0;
-                            result["value"] =  JToken.FromObject(task.Result);
-                        }
-                    }));
+                else
+                {
+                    result["ev"] = true;
                 }
             }
+            if (options.IncludeType)
+            {
+                result["type"] = HapTypeConverter.Format(characteristic.Type);
+            }
+            if (options.IncludePerms)
+            {
+                var perms = new JArray();
+                if (characteristic.CanRead) perms.Add("pr");
+                if (characteristic.CanWrite) perms.Add("pw");
+                if (characteristic is IObservable<object>) perms.Add("ev");
+                result["perms"] = perms;
+            }
+            if (options.IncludeMeta)
+            {
+                result["format"] = FormatName(characteristic.Format);
+                if (characteristic.MinValue.HasValue)
+                    result["minValue"] = characteristic.MinValue.Value;
+                if (characteristic.MaxValue.HasValue)
+                    result["maxValue"] = characteristic.MaxValue.Value;
+                if (characteristic.MinStep.HasValue)
+                    result["minStep"] = characteristic.MinStep.Value;
+                if (characteristic.MaxLen.HasValue)
+                    result["maxLen"] = characteristic.MaxLen.Value;
+                if (characteristic.MaxDataLen.HasValue)
+                    result["maxDataLen"] = characteristic.MaxDataLen.Value;
+                if (characteristic.Unit.HasValue)
+                    result["unit"] = characteristic.Unit.Value.ToString().ToLowerInvariant();
+                if (characteristic.ValidValues != null)
+                    result["valid-values"] = JToken.FromObject(characteristic.ValidValues);
+                if (characteristic.ValidValuesRange != null)
+                    result["valid-values-range"] = new JArray()
+                    {
+                        characteristic.ValidValuesRange.Item1,
+                        characteristic.ValidValuesRange.Item2
+                    };
+            }
+            return result;
+        }
 
-            return Task.WhenAll(tasks).ContinueWith(allReads => {
-                var response = new HapResponse();
-                var includeStatus = results.Any(x => (int)x["status"] != 0);
-                if (!includeStatus)
+        private static string FormatName(Type type)
+        {
+            if (type == typeof(string)) return "string";
+            if (type == typeof(bool)) return "bool";
+            if (type == typeof(int)) return "int";
+            if (type == typeof(double)) return "float";
+            if (type == typeof(byte[])) return "data";
+            if (type == typeof(TLVCollection)) return "tlv8";
+            if (type == typeof(byte)) return "uint8";
+            if (type == typeof(ushort)) return "uint16";
+            if (type == typeof(uint)) return "uint32";
+            if (type == typeof(ulong)) return "uint64";
+            throw new ArgumentException("Unknown type " + type, nameof(type));
+        }
+
+        public JObject ReadCharacteristic(AccessoryCharacteristicId id, CharacteristicReadRequest options)
+        {
+            var characteristic = FindCharacteristic(id.AccessoryId, id.InstanceId);
+            if (characteristic == null)
+            {
+                throw new NotExistException(id);
+            }
+            if (!characteristic.CanRead &&
+                !options.IncludeEvent &&
+                !options.IncludeMeta &&
+                !options.IncludePerms &&
+                !options.IncludeType)
+            {
+                // If the attempt is to just read the value of the characteristic, return an error, because it is not readable.
+                // If there is a request for metadata of some kind, then the read request is valid, it just won't include a value.
+                throw new WriteOnlyException(id);
+            }
+            return SerializeCharacteristic(characteristic, id, true, options);
+        }
+
+        public HapResponse HandleCharacteristicReadRequest(CharacteristicReadRequest request)
+        {
+            var results = new JArray();
+
+            var anyErrors = false;
+
+            foreach (var id in request.Ids)
+            {
+                JObject data;
+                try
                 {
-                    response.Status = 200;
+                    data = ReadCharacteristic(id, request);
                 }
-                else if (results.Count == 1)
+                catch (HapException ex)
+                {
+                    anyErrors = true;
+                    data = new JObject()
+                    {
+                        "aid", ex.AccessoryId,
+                        "iid", ex.CharacteristicId,
+                        "status", ex.ErrorCode
+                    };
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine(ex);
+                    anyErrors = true;
+                    data = new JObject()
+                    {
+                        { "aid", id.AccessoryId },
+                        { "iid", id.InstanceId },
+                        { "status", -70407 }
+                    };
+                }
+                results.Add(data);
+            }
+
+            var response = new HapResponse();
+            if (anyErrors)
+            {
+                if (results.Count == 1)
                 {
                     response.Status = 400;
                 }
                 else
                 {
                     response.Status = 207;
-                }
-
-                response.Body = new JObject() {
-                    {"characteristics", results}
-                };
-
-                return response;
-            });
-        }
-
-        public Task<HapResponse> HandleCharacteristicWriteRequest(CharacteristicWriteRequest request)
-        {
-            var characteristics = new JArray();
-            var tasks = new List<Task>();
-
-            foreach (var item in request.Characteristics) {
-                var result = new JObject();
-                characteristics.Add(result);
-                result["aid"] = item.AccessoryId;
-                result["iid"] = item.InstanceId;
-                var characteristic = FindCharacteristic(item.AccessoryId, item.InstanceId);
-                if (characteristic == null) {
-                    result["status"] = -70409;
-                }
-                else if (characteristic.Write == null && item.Value != null) {
-                    result["status"] = -70404;
-                }
-                else if (characteristic.Observable == null && item.Events.HasValue) {
-                    result["status"] = -70406;
-                }
-                else {
-                    if (item.Value != null) {
-                        try {
-                            tasks.Add(characteristic.Write(characteristic.Format.Coerce(item.Value)).ContinueWith(task => {
-                                if (task.IsFaulted) {
-                                    result["status"] = -70407;
-                                }
-                                else {
-                                    result["status"] = 0;
-                                }
-                            }));
-                        }
-                        catch (ArgumentOutOfRangeException) {
-                            result["status"] = -70410;
-                        }
-                        catch (ArgumentException) {
-                            result["status"] = -70410;
-                        }
-                    }
-                    else
+                    foreach (var result in results)
                     {
-                        result["status"] = 0;
-                    }
-
-                    if (item.Events.HasValue) {
-                        var itemid = (AccessoryCharacteristicId)item;
-                        if (item.Events.Value) {
-                            if (!subscriptions.ContainsKey(itemid))
-                            {
-                                subscriptions[itemid] = characteristic.Observable.Subscribe(new Observer(this, itemid));
-                            }
-                        }
-                        else {
-                            if (subscriptions.TryGetValue(itemid, out IDisposable disposable))
-                            {
-                                subscriptions.Remove(itemid);
-                                disposable.Dispose();
-                            }
+                        if (result["status"] == null)
+                        {
+                            result["status"] = 0;
                         }
                     }
                 }
             }
+            else {
+                response.Status = 200;
+            }
+            response.Body = new JObject()
+            {
+                { "characteristics", results }
+            };
 
-            return Task.WhenAll(tasks).ContinueWith(allWrites => {
-                var response = new HapResponse();
-                
-                if (characteristics.All(c => (int)c["status"] == 0)) {
-                    response.Status = 204;
+            return response;
+        }
+
+        private void WriteCharacteristic(CharacteristicWriteItem item)
+        {
+            var ser = new JsonSerializer();
+            ser.Converters.Add(new TLVConverter());
+
+            var characteristic = FindCharacteristic(item.AccessoryId, item.InstanceId);
+            if (characteristic == null)
+            {
+                throw new NotExistException(item.AccessoryId, item.InstanceId);
+            }
+            if (item.Value != null &!characteristic.CanWrite)
+            {
+                throw new ReadOnlyException(item.AccessoryId, item.InstanceId);
+            }
+            if (item.Events.HasValue && !(characteristic is IObservable<object>))
+            {
+                throw new NotificationNotSupportedException(item.AccessoryId, item.InstanceId);
+            }
+
+            if (item.Value != null)
+            {
+                try
+                {
+                    characteristic.Value = item.Value.ToObject(characteristic.Format, ser);
                 }
-                else {
-                    response.Body = new JObject() {
-                        {"characteristics", characteristics}
-                    };
-                    if (request.Characteristics.Count > 1) {
-                        response.Status = 207;
-                    }
-                    else {
-                        response.Status = 400;
+                catch (ArgumentOutOfRangeException)
+                {
+                    throw new InvalidValueException(item.AccessoryId, item.InstanceId);
+                }
+                catch (ArgumentException)
+                {
+                    throw new InvalidValueException(item.AccessoryId, item.InstanceId);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine(ex);
+                    throw new OutOfResourcesException(item.AccessoryId, item.InstanceId);
+                }
+            }
+            
+            if (item.Events.HasValue)
+            {
+                var itemid = (AccessoryCharacteristicId)item;
+                if (item.Events.Value)
+                {
+                    if (!subscriptions.ContainsKey(itemid))
+                    {
+                        subscriptions[itemid] = ((IObservable<object>)characteristic).Subscribe(new Observer(this, itemid));
                     }
                 }
-                return response;
-            });
+                else
+                {
+                    if (subscriptions.TryGetValue(itemid, out IDisposable disposable))
+                    {
+                        subscriptions.Remove(itemid);
+                        disposable.Dispose();
+                    }
+                }
+            }
+        }
+
+        public HapResponse HandleCharacteristicWriteRequest(CharacteristicWriteRequest request)
+        {
+            var characteristics = new JArray();
+            var anyErrors = false;
+
+            foreach (var item in request.Characteristics)
+            {
+                var result = new JObject();
+                characteristics.Add(result);
+                result["aid"] = item.AccessoryId;
+                result["iid"] = item.InstanceId;
+                try
+                {
+                    WriteCharacteristic(item);
+                    result["status"] = 0;
+                }
+                catch (HapException ex)
+                {
+                    result["status"] = ex.ErrorCode;
+                }
+            }
+
+            var response = new HapResponse();
+
+            if (anyErrors)
+            {
+                if (characteristics.Count > 1)
+                {
+                    response.Status = 207;
+                }
+                else
+                {
+                    response.Status = 400;
+                }
+                response.Body = new JObject()
+                {
+                    { "characteristics", characteristics }
+                };
+            }
+            else
+            {
+                response.Status = 204;
+            }
+
+            return response;
         }
 
         public HapResponse GetAccessoryDatabase()
         {
-            var serializer = new JsonSerializer();
-            serializer.Converters.Add(new CharacteristicConverter());
-            var accessories = JToken.FromObject(server.Accessories, serializer);
+            var options = new CharacteristicReadRequest
+            {
+                IncludeEvent = true,
+                IncludeMeta = true,
+                IncludePerms = true,
+                IncludeType = true
+            };
+
+            var result = new JObject();
+            var accessories = new JArray();
+            result["accessories"] = accessories;
+            foreach (var accessory in server.Accessories)
+            {
+                var acc = new JObject();
+                accessories.Add(acc);
+                acc["aid"] = accessory.Id;
+                var services = new JArray();
+                acc["services"] = services;
+                foreach (var service in accessory.Services)
+                {
+                    var svc = new JObject();
+                    services.Add(svc);
+                    svc["iid"] = service.Id;
+                    svc["type"] = HapTypeConverter.Format(service.Type);
+                    var characteristics = new JArray();
+                    svc["characteristics"] = characteristics;
+                    foreach (var characteristic in service.Characteristics)
+                    {
+                        var id = new AccessoryCharacteristicId(accessory.Id, characteristic.Id);
+                        characteristics.Add(SerializeCharacteristic(characteristic, id, false, options));
+                    }
+                }
+            }
             return new HapResponse
             {
                 Status = 200,
-                Body = new JObject()
-                {
-                    { "accessories", accessories }
-                }
+                Body = result
             };
         }
 
