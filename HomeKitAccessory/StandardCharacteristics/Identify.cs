@@ -13,7 +13,7 @@ namespace HomeKitAccessory.StandardCharacteristics
         {
             this.identifyRoutine = identifyRoutine;
         }
-        public override Guid Type => throw new NotImplementedException();
+        public override Guid Type => type;
         public override bool TypedValue { set => identifyRoutine(); }
     }
 }

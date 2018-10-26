@@ -11,10 +11,18 @@ namespace HomeKitAccessory.StandardServices
 
         public AccessoryInformation(
             string manufacturer,
+            string model,
+            string name,
+            string serial,
+            string firmware,
             Action identifyRoutine)
         {
-            AddCharacteristic(new Manufacturer(manufacturer));
-            AddCharacteristic(new Identify(identifyRoutine));
+            AddCharacteristic(1, new Manufacturer(manufacturer));
+            AddCharacteristic(2, new Identify(identifyRoutine));
+            AddCharacteristic(3, new Model(model));
+            AddCharacteristic(4, new Name(name));
+            AddCharacteristic(5, new Serial(serial));
+            AddCharacteristic(6, new FirmwareVersion(firmware));
         }
     }
 }

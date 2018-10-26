@@ -7,11 +7,12 @@ namespace HomeKitAccessory.Core
     {
         public ulong Id { get; set; }
         public abstract Guid Type { get; }
-        private List<Characteristic> characteristics;
+        private List<Characteristic> characteristics = new List<Characteristic>();
         public IEnumerable<Characteristic> Characteristics => characteristics;
         public bool Hidden { get; protected set; }
-        protected void AddCharacteristic(Characteristic characteristic)
+        protected void AddCharacteristic(ulong id, Characteristic characteristic)
         {
+            characteristic.Id = id;
             characteristics.Add(characteristic);
         }
     }

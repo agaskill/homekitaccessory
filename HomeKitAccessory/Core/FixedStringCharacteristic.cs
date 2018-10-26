@@ -19,5 +19,7 @@ namespace HomeKitAccessory.Core
 
         public override bool CanWrite => false;
         public override bool CanRead => true;
+
+        public override int? MaxLen => 64;
     }
 }

@@ -38,7 +38,9 @@ namespace HomeKitAccessory.Net
         {
             Trace.TraceInformation("Disposing of CharacteristicHandler {0}", this.GetHashCode());
 
-            notificationTimer.Dispose();
+            if (notificationTimer != null)
+                notificationTimer.Dispose();
+                
             foreach (var entry in subscriptions)
             {
                 Trace.TraceInformation("Disposing of subscription to {0}", entry.Key);
@@ -82,8 +84,7 @@ namespace HomeKitAccessory.Net
         {
             return server.Accessories
                 .FirstOrDefault(a => a.Id == accessoryId)?
-                .Services.SelectMany(s => s.Characteristics)
-                .FirstOrDefault(c => c.Id == instanceId);
+                .FindCharacteristic(instanceId);
         }
 
         private JObject SerializeCharacteristic(
@@ -104,14 +105,7 @@ namespace HomeKitAccessory.Net
             }
             if (options.IncludeEvent)
             {
-                if (subscriptions.ContainsKey(id))
-                {
-                    result["ev"] = false;
-                }
-                else
-                {
-                    result["ev"] = true;
-                }
+                result["ev"] = subscriptions.ContainsKey(id);
             }
             if (options.IncludeType)
             {
@@ -205,9 +199,9 @@ namespace HomeKitAccessory.Net
                     anyErrors = true;
                     data = new JObject()
                     {
-                        "aid", ex.AccessoryId,
-                        "iid", ex.CharacteristicId,
-                        "status", ex.ErrorCode
+                        { "aid", ex.AccessoryId },
+                        { "iid", ex.CharacteristicId },
+                        { "status", ex.ErrorCode }
                     };
                 }
                 catch (Exception ex)
@@ -366,7 +360,7 @@ namespace HomeKitAccessory.Net
         {
             var options = new CharacteristicReadRequest
             {
-                IncludeEvent = true,
+                IncludeEvent = false,
                 IncludeMeta = true,
                 IncludePerms = true,
                 IncludeType = true

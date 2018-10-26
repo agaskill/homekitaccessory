@@ -42,7 +42,7 @@ namespace HomeKitAccessory.Net
                     break;
                 }
                 var httpConnection = new HttpConnection(server, client);
-                new Thread(() =>
+                var clientThread = new Thread(() =>
                 {
                     try
                     {
@@ -52,7 +52,9 @@ namespace HomeKitAccessory.Net
                     {
                         Console.WriteLine(ex);
                     }
-                }).Start();
+                });
+                clientThread.IsBackground = true;
+                clientThread.Start();
             }
         }
 
@@ -228,6 +230,9 @@ namespace HomeKitAccessory.Net
                             res.ResponseHeaders["Content-Type"] = "text/plain";
                         }
 
+                        if (res.StatusPhrase == null)
+                            res.StatusPhrase = StatusPhrase(res.StatusCode);
+
                         res.ResponseHeaders["Server"] = "EventedHttpServer";
                         res.ResponseHeaders["Date"] = DateTime.UtcNow.ToString("r");
 
@@ -283,6 +288,22 @@ namespace HomeKitAccessory.Net
 
             client.Dispose();
             Console.WriteLine("Client disconnect normally");
+            characteristicHandler.Dispose();
+        }
+
+        private static string StatusPhrase(int statusCode)
+        {
+            switch (statusCode)
+            {
+                case 200: return "Ok";
+                case 204: return "No Content";
+                case 207: return "Multi-Status";
+                case 400: return "Bad Request";
+                case 401: return "Unauthorized";
+                case 403: return "Forbidden";
+                case 500: return "Internal Server Error";
+                default: return "Unknown";
+            }
         }
 
         private void DispatchRequest(HttpRequest req, HttpResponse res)
@@ -363,13 +384,16 @@ namespace HomeKitAccessory.Net
         private void SetHapResponse(HttpResponse response, HapResponse data)
         {
             response.StatusCode = data.Status;
-            response.ResponseHeaders["Content-Type"] = HapContentType;
-            var ms = new MemoryStream();
-            var sw = new StreamWriter(ms);
-            var jw = new JsonTextWriter(sw);
-            data.Body.WriteTo(jw);
-            jw.Flush();
-            response.Body = ms.ToArray();
+            if (data.Body != null)
+            {
+                response.ResponseHeaders["Content-Type"] = HapContentType;
+                var ms = new MemoryStream();
+                var sw = new StreamWriter(ms);
+                var jw = new JsonTextWriter(sw);
+                data.Body.WriteTo(jw);
+                jw.Flush();
+                response.Body = ms.ToArray();
+            }
         }
 
         private void HandleIdentify(HttpRequest request, HttpResponse response)
@@ -390,28 +414,28 @@ namespace HomeKitAccessory.Net
 
         private void HandleAccessoryDatabase(HttpRequest request, HttpResponse response)
         {
-            if (pairState is Verified)
-            {
+            //if (pairState is Verified)
+            //{
                 if (request.Method != "GET")
                     throw new HttpException(405, "Not implemented");
                 var data = characteristicHandler.GetAccessoryDatabase();
                 SetHapResponse(response, data);
-            }
-            else
-            {
-                SetHapResponse(response, new HapResponse {
-                    Status = 400, 
-                    Body = new JObject() {
-                        { "status", -70401 }
-                    }
-                });
-            }
+            // }
+            // else
+            // {
+            //     SetHapResponse(response, new HapResponse {
+            //         Status = 400, 
+            //         Body = new JObject() {
+            //             { "status", -70401 }
+            //         }
+            //     });
+            // }
         }
 
         private void HandleCharacteristics(HttpRequest request, HttpResponse response)
         {
-            if (pairState is Verified)
-            {
+            // if (pairState is Verified)
+            // {
                 if (request.Method == "GET")
                 {
                     var ids = new List<AccessoryCharacteristicId>();
@@ -433,8 +457,10 @@ namespace HomeKitAccessory.Net
 
                     SetHapResponse(response, hapResponse);
                 }
-                else if (request.Method == "POST")
+                else if (request.Method == "PUT")
                 {
+                    Console.WriteLine(Encoding.UTF8.GetString(request.Body));
+
                     var writeRequest = new JsonSerializer().Deserialize<CharacteristicWriteRequest>(
                         new JsonTextReader(
                             new StreamReader(
@@ -447,7 +473,11 @@ namespace HomeKitAccessory.Net
                 {
                     throw new HttpException(405, "Not implemented");
                 }
-            }
+            // }
+            // else
+            // {
+            //     throw new HttpException(401, "Not authenticated");
+            // }
         }
     }
 }
