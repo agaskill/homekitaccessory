@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using HomeKitAccessory.Core;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -51,12 +52,8 @@ namespace HomeKitAccessory
                 "B53238EB-1BFC-477E-ADDE-6E05A97401DE",
                 "1.0.0",
                 () => Console.WriteLine("Identify!")));
-            var switchState = new SwitchStateObservable();
-
-            accessory.AddService(2, new StandardServices.Switch(
-                x => switchState.Value = x,
-                () => switchState.Value,
-                switchState));
+            var switchState = new MySwitchState();
+            accessory.AddService(2, new StandardServices.Switch(switchState));
             
             server.RegisterAccessory(accessory);
             
@@ -67,7 +64,7 @@ namespace HomeKitAccessory
                 var line = Console.ReadLine();
                 if (line == "") break;
                 if (line == "x") {
-                    switchState.Value = !switchState.Value;
+                    switchState.TypedValue = !switchState.TypedValue;
                 }
             }
             server.Stop();
@@ -84,47 +81,23 @@ namespace HomeKitAccessory
         }
     }
 
-    class DisposableAction : IDisposable
+    class MySwitchState : StandardCharacteristics.On, IObservable<object>
     {
-        private Action fn;
-        public DisposableAction(Action fn)
-        {
-            this.fn = fn;
-        }
+        private Observable<object> observable;
+        private bool currentState;
 
-        public void Dispose()
-        {
-            fn();
-        }
-    }
-
-    class SwitchStateObservable : IObservable<bool>
-    {
-        private bool state;
-        private List<IObserver<bool>> subscribers = new List<IObserver<bool>>();
-
-        public bool Value
-        {
-            get => state;
-            set
-            {
+        public override bool TypedValue {
+            get => currentState;
+            set {
                 Console.WriteLine("Changing state to " + value);
-                state = value;
-                foreach (var subscriber in subscribers)
-                {
-                    Task.Run(() => subscriber.OnNext(value));
-                }
+                currentState = value;
+                observable.Notify(value);
             }
         }
 
-        public IDisposable Subscribe(IObserver<bool> observer)
+        public IDisposable Subscribe(IObserver<object> observer)
         {
-            subscribers.Add(observer);
-            Console.WriteLine("Subscribed");
-            return new DisposableAction(() => {
-                Console.WriteLine("Unsubscribed");
-                subscribers.Remove(observer);
-            });
+            return observable.Subscribe(observer);
         }
     }
 }
