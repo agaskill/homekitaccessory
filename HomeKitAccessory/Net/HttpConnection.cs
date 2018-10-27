@@ -337,6 +337,9 @@ namespace HomeKitAccessory.Net
             response.StatusCode = data.Status;
             if (data.Body != null)
             {
+                if (logger.IsDebugEnabled)
+                    logger.Debug(data.Body.ToString());
+
                 response.ResponseHeaders["Content-Type"] = HapContentType;
                 var ms = new MemoryStream();
                 var sw = new StreamWriter(ms);

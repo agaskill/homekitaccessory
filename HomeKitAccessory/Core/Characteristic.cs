@@ -8,9 +8,13 @@ namespace HomeKitAccessory.Core
         public ulong Id { get; set; }
         public abstract Guid Type { get; }
         public abstract Type Format { get; }
-        public abstract object Value { get; set; }
-        public abstract bool CanRead { get; }
-        public abstract bool CanWrite { get; }
+        public virtual object Value
+        {
+            get => throw new NotImplementedException();
+            set => throw new NotImplementedException();
+        }
+        public virtual bool CanRead => false;
+        public virtual bool CanWrite => false;
         public virtual CharacteristicUnit? Unit => null;
         public virtual double? MinValue => null;
         public virtual double? MaxValue => null;

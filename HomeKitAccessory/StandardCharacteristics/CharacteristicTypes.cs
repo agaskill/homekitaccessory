@@ -1,0 +1,82 @@
+using System;
+
+namespace HomeKitAccessory.StandardCharacteristics
+{
+    public static class CharacteristicTypes
+    {
+        public static readonly Guid AdminOnly = new Guid("00000001-0000-1000-8000-0026BB765291");
+        public static readonly Guid AudioFeedback = new Guid("00000005-0000-1000-8000-0026BB765291");
+        public static readonly Guid Brightness = new Guid("00000008-0000-1000-8000-0026BB765291");
+        public static readonly Guid CoolingThresholdTemp = new Guid("0000000D-0000-1000-8000-0026BB765291");
+        public static readonly Guid CurrentDoorState = new Guid("0000000E-0000-1000-8000-0026BB765291");
+        public static readonly Guid CurrentHeatingCoolingState = new Guid("0000000F-0000-1000-8000-0026BB765291");
+        public static readonly Guid CurrentRelativeHumidity = new Guid("00000010-0000-1000-8000-0026BB765291");
+        public static readonly Guid CurrentTemperature = new Guid("00000011-0000-1000-8000-0026BB765291");
+        public static readonly Guid FirmwareRevision = new Guid("00000052-0000-1000-8000-0026BB765291");
+        public static readonly Guid HardwareRevision = new Guid("00000053-0000-1000-8000-0026BB765291");
+        public static readonly Guid HeatingThresholdTemp = new Guid("00000012-0000-1000-8000-0026BB765291");
+        public static readonly Guid Hue = new Guid("00000013-0000-1000-8000-0026BB765291");
+        public static readonly Guid Identify = new Guid("00000014-0000-1000-8000-0026BB765291");
+        public static readonly Guid LockControlPoint = new Guid("00000019-0000-1000-8000-0026BB765291");
+        public static readonly Guid LockCurrentState = new Guid("0000001D-0000-1000-8000-0026BB765291");
+        public static readonly Guid LockLastKnownAction = new Guid("0000001C-0000-1000-8000-0026BB765291");
+        public static readonly Guid LockManagementAutoSecurityTimeout = new Guid("0000001A-0000-1000-8000-0026BB765291");
+        public static readonly Guid LockTargetState = new Guid("0000001E-0000-1000-8000-0026BB765291");
+        public static readonly Guid Logs = new Guid("0000001F-0000-1000-8000-0026BB765291");
+        public static readonly Guid Manufacturer = new Guid("00000020-0000-1000-8000-0026BB765291");
+        public static readonly Guid Model = new Guid("00000021-0000-1000-8000-0026BB765291");
+        public static readonly Guid MotionDetected = new Guid("00000022-0000-1000-8000-0026BB765291");
+        public static readonly Guid Name = new Guid("00000023-0000-1000-8000-0026BB765291");
+        public static readonly Guid ObstructionDetected = new Guid("00000024-0000-1000-8000-0026BB765291");
+        public static readonly Guid On = new Guid("00000025-0000-1000-8000-0026BB765291");
+        public static readonly Guid OutletInUse = new Guid("00000026-0000-1000-8000-0026BB765291");
+        public static readonly Guid RotationDirection = new Guid("00000028-0000-1000-8000-0026BB765291");
+        public static readonly Guid RotationSpeed = new Guid("00000029-0000-1000-8000-0026BB765291");
+        public static readonly Guid Saturation = new Guid("0000002F-0000-1000-8000-0026BB765291");
+        public static readonly Guid SerialNumber = new Guid("00000030-0000-1000-8000-0026BB765291");
+        public static readonly Guid TargetDoorState = new Guid("00000032-0000-1000-8000-0026BB765291");
+        public static readonly Guid TargetHeatingCoolingState = new Guid("00000033-0000-1000-8000-0026BB765291");
+        public static readonly Guid TargetRelativeHumidity = new Guid("00000034-0000-1000-8000-0026BB765291");
+        public static readonly Guid TargetTemperature = new Guid("00000035-0000-1000-8000-0026BB765291");
+        public static readonly Guid TemperatureDisplayUnits = new Guid("00000036-0000-1000-8000-0026BB765291");
+        public static readonly Guid Version = new Guid("00000037-0000-1000-8000-0026BB765291");
+        public static readonly Guid SecuritySystemCurrentState = new Guid("00000066-0000-1000-8000-0026BB765291");
+        public static readonly Guid SecuritySystemTargetState = new Guid("00000067-0000-1000-8000-0026BB765291");
+        public static readonly Guid BatteryLevel = new Guid("00000068-0000-1000-8000-0026BB765291");
+        public static readonly Guid ContactSensorState = new Guid("0000006A-0000-1000-8000-0026BB765291");
+        public static readonly Guid CurrentAmbientLightLevel = new Guid("0000006B-0000-1000-8000-0026BB765291");
+        public static readonly Guid CurrentPosition = new Guid("0000006D-0000-1000-8000-0026BB765291");
+        public static readonly Guid HoldPosition = new Guid("0000006F-0000-1000-8000-0026BB765291");
+        public static readonly Guid LeakDetected = new Guid("00000070-0000-1000-8000-0026BB765291");
+        public static readonly Guid OccupancyDetected = new Guid("00000071-0000-1000-8000-0026BB765291");
+        public static readonly Guid PositionState = new Guid("00000072-0000-1000-8000-0026BB765291");
+        public static readonly Guid ProgrammableSwitchEvent = new Guid("00000073-0000-1000-8000-0026BB765291");
+        public static readonly Guid StatusActive = new Guid("00000075-0000-1000-8000-0026BB765291");
+        public static readonly Guid SmokeDetected = new Guid("00000076-0000-1000-8000-0026BB765291");
+        public static readonly Guid StatusFault = new Guid("00000077-0000-1000-8000-0026BB765291");
+        public static readonly Guid StatusJammed = new Guid("00000078-0000-1000-8000-0026BB765291");
+        public static readonly Guid StatusLowBatteryLevel = new Guid("00000079-0000-1000-8000-0026BB765291");
+        public static readonly Guid StatusTampered = new Guid("0000007A-0000-1000-8000-0026BB765291");
+        public static readonly Guid TargetPosition = new Guid("0000007C-0000-1000-8000-0026BB765291");
+        public static readonly Guid SecuritySystemAlarmType = new Guid("0000008E-0000-1000-8000-0026BB765291");
+        public static readonly Guid ChargingState = new Guid("0000008F-0000-1000-8000-0026BB765291");
+        public static readonly Guid AirQuality = new Guid("00000095-0000-1000-8000-0026BB765291");
+        public static readonly Guid StreamingStatus = new Guid("00000120-0000-1000-8000-0026BB765291");
+        public static readonly Guid SupportedVideoStreamConfig = new Guid("00000114-0000-1000-8000-0026BB765291");
+        public static readonly Guid SupportedAudioStreamConfig = new Guid("00000115-0000-1000-8000-0026BB765291");
+        public static readonly Guid SupportedRTPConfig = new Guid("00000116-0000-1000-8000-0026BB765291");
+        public static readonly Guid SetupEndpoints = new Guid("00000118-0000-1000-8000-0026BB765291");
+        public static readonly Guid SelectedRTPStreamConfig = new Guid("00000117-0000-1000-8000-0026BB765291");
+        public static readonly Guid Volume = new Guid("00000119-0000-1000-8000-0026BB765291");
+        public static readonly Guid Mute = new Guid("0000011A-0000-1000-8000-0026BB765291");
+        public static readonly Guid NightVision = new Guid("0000011B-0000-1000-8000-0026BB765291");
+        public static readonly Guid OpticalZoom = new Guid("0000011C-0000-1000-8000-0026BB765291");
+        public static readonly Guid DigitalZoom = new Guid("0000011D-0000-1000-8000-0026BB765291");
+        public static readonly Guid ImageRotation = new Guid("0000011E-0000-1000-8000-0026BB765291");
+        public static readonly Guid ImageMirroring = new Guid("0000011F-0000-1000-8000-0026BB765291");
+        public static readonly Guid LockPhysicalControls = new Guid("000000A7-0000-1000-8000-0026BB765291");
+        public static readonly Guid TargetFanState = new Guid("000000BF-0000-1000-8000-0026BB765291");
+        public static readonly Guid CurrentFanState = new Guid("000000AF-0000-1000-8000-0026BB765291");
+        public static readonly Guid Active = new Guid("000000B0-0000-1000-8000-0026BB765291");
+    }
+}

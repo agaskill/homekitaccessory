@@ -5,6 +5,8 @@ using System.Linq;
 using System.Threading.Tasks;
 using HomeKitAccessory.Core;
 using HomeKitAccessory.Pairing;
+using HomeKitAccessory.StandardCharacteristics;
+using HomeKitAccessory.StandardServices;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using NLog;
@@ -35,7 +37,7 @@ namespace HomeKitAccessory
             };
             var userStore = new Pairing.DynamicSetupCodeUserStore(code => Console.WriteLine("*** {0} ***", code));
             var server = new Server(pairingDb, serverInfo, bonjourProvider, userStore);
-            server.ConfigNumber = 5;
+            server.ConfigNumber = 8;
 
             var accessory = new Core.Accessory();
             accessory.Id = 1;
@@ -47,7 +49,10 @@ namespace HomeKitAccessory
                 "1.0.0",
                 () => Console.WriteLine("Identify!")));
             var switchState = new MySwitchState();
-            accessory.AddService(2, new StandardServices.Switch(switchState));
+            accessory.AddService(2, new Service(ServiceTypes.Switch, primary: true)
+            {
+                { 1, switchState }
+            });
             
             server.RegisterAccessory(accessory);
             
@@ -75,28 +80,21 @@ namespace HomeKitAccessory
         }
     }
 
-    class MySwitchState : StandardCharacteristics.On, IObservable<object>
+    class MySwitchState : ObservableTypedCharacteristic<bool>
     {
-        private Observable<object> observable;
         private bool currentState;
-        
-        public MySwitchState()
-        {
-            observable = new Observable<object>(false);
-        }
+
+        public override Guid Type => CharacteristicTypes.On;
+
+        public override bool CanWrite => true;
 
         public override bool TypedValue {
             get => currentState;
             set {
                 Console.WriteLine("Changing state to " + value);
                 currentState = value;
-                observable.Notify(value);
+                Notify(value);
             }
-        }
-
-        public IDisposable Subscribe(IObserver<object> observer)
-        {
-            return observable.Subscribe(observer);
         }
     }
 }

@@ -32,7 +32,7 @@ namespace HomeKitAccessory
         public void Identify()
         {
             logger.Debug("Server-level identify called");
-            Guid identifyType = StandardCharacteristics.Identify.KnownType;
+            Guid identifyType = StandardCharacteristics.CharacteristicTypes.Identify;
             foreach (var accessory in accessories)
             {
                 accessory.Services.First().Characteristics.First(c => c.Type == identifyType).Value = true;

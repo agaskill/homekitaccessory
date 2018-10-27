@@ -12,6 +12,10 @@ namespace HomeKitAccessory.Core
 
         public sealed override Type Format => typeof(T);
 
-        public abstract T TypedValue { get; set; }
+        public virtual T TypedValue
+        {
+            get => throw new NotImplementedException();
+            set => throw new NotImplementedException();
+        }
     }
 }
