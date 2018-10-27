@@ -15,6 +15,7 @@ namespace HomeKitAccessory.Core
         }
         public virtual bool CanRead => false;
         public virtual bool CanWrite => false;
+        public virtual IObservable<object> Observable => null;
         public virtual CharacteristicUnit? Unit => null;
         public virtual double? MinValue => null;
         public virtual double? MaxValue => null;

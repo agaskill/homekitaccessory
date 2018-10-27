@@ -119,7 +119,7 @@ namespace HomeKitAccessory.Net
                 var perms = new JArray();
                 if (characteristic.CanRead) perms.Add("pr");
                 if (characteristic.CanWrite) perms.Add("pw");
-                if (characteristic is IObservable<object>) perms.Add("ev");
+                if (characteristic.Observable != null) perms.Add("ev");
                 result["perms"] = perms;
             }
             if (options.IncludeMeta)
@@ -268,7 +268,7 @@ namespace HomeKitAccessory.Net
             {
                 throw new ReadOnlyException(item.AccessoryId, item.InstanceId);
             }
-            if (item.Events.HasValue && !(characteristic is IObservable<object>))
+            if (item.Events.HasValue && characteristic.Observable == null)
             {
                 throw new NotificationNotSupportedException(item.AccessoryId, item.InstanceId);
             }
@@ -301,7 +301,7 @@ namespace HomeKitAccessory.Net
                 {
                     if (!subscriptions.ContainsKey(itemid))
                     {
-                        subscriptions[itemid] = ((IObservable<object>)characteristic).Subscribe(new Observer(this, itemid));
+                        subscriptions[itemid] = characteristic.Observable.Subscribe(new Observer(this, itemid));
                     }
                 }
                 else
