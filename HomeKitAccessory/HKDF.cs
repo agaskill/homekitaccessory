@@ -5,7 +5,7 @@ namespace HomeKitAccessory
     using System.Security.Cryptography;
     using System.Text;
 
-    class HKDF
+    public class HKDF
     {
         public static byte[] SHA512(byte[] inputKey, string salt, string info, int outputSize)
         {

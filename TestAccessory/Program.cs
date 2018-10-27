@@ -20,26 +20,7 @@ namespace HomeKitAccessory
             loggingConfig.AddRule(LogLevel.Debug, LogLevel.Fatal, logConsole);
             LogManager.Configuration = loggingConfig;
 
-            // LogManager.ThrowExceptions = true;
-            // LogManager.EnableLogging();
-            // LogManager.LoadConfiguration("NLog.config");
-
             LogManager.GetLogger("test").Info("Started");
-
-            if (args.Length > 0 && args[0] == "testclient")
-            {
-                try
-                {
-                    var testClient = new TestClient("127.0.0.1", 5002);
-                    testClient.PairSetup("547-07-173");
-                    testClient.PairVerify();
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine(ex);
-                }
-                return;
-            }
 
             var pairingDb = new PairingDatabase();
             pairingDb.LoadOrInitialize();

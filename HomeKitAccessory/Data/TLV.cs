@@ -17,11 +17,23 @@ namespace HomeKitAccessory.Data
 
         public string StringValue => Encoding.UTF8.GetString(value);
 
-        public BigInteger IntegerValue
+        public int IntegerValue
         {
             get
             {
-                return new BigInteger(value, isUnsigned: true);
+                switch (value.Length)
+                {
+                    case 1:
+                        return (int)value[0];
+                    case 2:
+                        return value[0] | (value[1] << 8);
+                    case 3:
+                        return value[0] | (value[1] << 8) | value[2] << 16;
+                    case 4:
+                        return value[0] | (value[1] << 8) | value[2] << 16 | value[3] << 32;
+                    default:
+                        throw new InvalidOperationException();
+                }
             }
         }
 
@@ -37,10 +49,33 @@ namespace HomeKitAccessory.Data
             this.value = Encoding.UTF8.GetBytes(stringValue);
         }
 
-        public TLV(byte tag, BigInteger integerValue)
+        public TLV(byte tag, int integerValue)
         {
             this.tag = tag;
-            this.value = integerValue.ToByteArray(isUnsigned: true);
+            if (integerValue < 0)
+                throw new ArgumentException(nameof(integerValue));
+            if (integerValue < (1 << 8))
+            {
+                value = new byte[1];
+                value[0] = (byte)integerValue;
+            }
+            else if (integerValue < (1 << 16))
+            {
+                value = new byte[2];
+                value[0] = (byte)(integerValue & 0xff);
+                value[1] = (byte)(integerValue >> 8);
+            }
+            else if (integerValue < (1 << 24))
+            {
+                value = new byte[3];
+                value[0] = (byte)(integerValue & 0xff);
+                value[1] = (byte)((integerValue >> 8) & 0xff);
+                value[2] = (byte)(integerValue >> 16);
+            }
+            else
+            {
+                throw new ArgumentException(nameof(integerValue));
+            }
         }
 
         public void Write(Stream stream)

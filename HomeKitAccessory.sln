@@ -9,6 +9,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SRPAuth", "SRPAuth\SRPAuth.
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SRPAuth.Test", "SRPAuth.Test\SRPAuth.Test.csproj", "{46A16ECE-26D9-4B2F-AF15-A6920B3B0E9D}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TestAccessory", "TestAccessory\TestAccessory.csproj", "{27CB2E23-2AFF-45C4-A239-9C1E6E3DED24}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -58,5 +60,17 @@ Global
 		{46A16ECE-26D9-4B2F-AF15-A6920B3B0E9D}.Release|x64.Build.0 = Release|Any CPU
 		{46A16ECE-26D9-4B2F-AF15-A6920B3B0E9D}.Release|x86.ActiveCfg = Release|Any CPU
 		{46A16ECE-26D9-4B2F-AF15-A6920B3B0E9D}.Release|x86.Build.0 = Release|Any CPU
+		{27CB2E23-2AFF-45C4-A239-9C1E6E3DED24}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{27CB2E23-2AFF-45C4-A239-9C1E6E3DED24}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{27CB2E23-2AFF-45C4-A239-9C1E6E3DED24}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{27CB2E23-2AFF-45C4-A239-9C1E6E3DED24}.Debug|x64.Build.0 = Debug|Any CPU
+		{27CB2E23-2AFF-45C4-A239-9C1E6E3DED24}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{27CB2E23-2AFF-45C4-A239-9C1E6E3DED24}.Debug|x86.Build.0 = Debug|Any CPU
+		{27CB2E23-2AFF-45C4-A239-9C1E6E3DED24}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{27CB2E23-2AFF-45C4-A239-9C1E6E3DED24}.Release|Any CPU.Build.0 = Release|Any CPU
+		{27CB2E23-2AFF-45C4-A239-9C1E6E3DED24}.Release|x64.ActiveCfg = Release|Any CPU
+		{27CB2E23-2AFF-45C4-A239-9C1E6E3DED24}.Release|x64.Build.0 = Release|Any CPU
+		{27CB2E23-2AFF-45C4-A239-9C1E6E3DED24}.Release|x86.ActiveCfg = Release|Any CPU
+		{27CB2E23-2AFF-45C4-A239-9C1E6E3DED24}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

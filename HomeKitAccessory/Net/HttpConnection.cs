@@ -101,7 +101,7 @@ namespace HomeKitAccessory.Net
                         var req = new HttpRequest();
                         var requestLine = requestLineRaw.Split(' ');
                         req.Method = requestLine[0];
-                        var pathAndQuery = requestLine[1].Split('?', 2);
+                        var pathAndQuery = requestLine[1].Split('?');
                         req.Path = pathAndQuery[0];
                         req.QueryString = pathAndQuery.Length > 1 ? ParseQueryString(pathAndQuery[1]) : null;
                         var requestProtocol = requestLine[2];
@@ -120,7 +120,7 @@ namespace HomeKitAccessory.Net
                         int contentLength = 0;
                         while (!string.IsNullOrEmpty(headerLine)) {
                             logger.Debug("headerLine: {0}", headerLine);
-                            var header = headerLine.Split(':', 2);
+                            var header = headerLine.Split(':');
                             var headerName = header[0].Trim();
                             var headerValue = header[1].Trim();
                             if (StringComparer.OrdinalIgnoreCase.Equals(headerName, "Content-Length"))
