@@ -3,11 +3,14 @@ using System.Collections.Generic;
 using System.IO;
 using System.Security.Cryptography;
 using Newtonsoft.Json;
+using NLog;
 
-namespace HomeKitAccessory
+namespace HomeKitAccessory.Pairing
 {
     public class PairingDatabase
     {
+        private static Logger logger = LogManager.GetCurrentClassLogger();
+
         public string DeviceId {get;set;}
         public Sodium.Ed25519Keypair SignKeyPair {get;set;}
 
@@ -18,11 +21,15 @@ namespace HomeKitAccessory
             var random = RandomNumberGenerator.Create();
             var bytes = new byte[6];
             random.GetNonZeroBytes(bytes);
-            return BitConverter.ToString(bytes).Replace('-', ':');
+            var deviceId = BitConverter.ToString(bytes).Replace('-', ':');
+            logger.Info("Generated device id {0}", deviceId);
+            return deviceId;
         }
 
         public void AddPairing(string deviceId, Sodium.Ed25519PublicKey longTermPublic)
         {
+            logger.Info("Adding pairing for {0}", deviceId);
+
             var entry = new PairingEntry
             {
                 DeviceId = deviceId,
@@ -39,6 +46,7 @@ namespace HomeKitAccessory
 
         public virtual void Save()
         {
+            logger.Debug("Saving pairing state");
             using (var writer = new JsonTextWriter(
                     new StreamWriter("pairingdb.json")))
             {
@@ -51,6 +59,7 @@ namespace HomeKitAccessory
         {
             if (File.Exists("pairingdb.json"))
             {
+                logger.Debug("Reading pairing database from file");
                 using (var reader = new JsonTextReader(
                     new StreamReader("pairingdb.json")))
                 {
@@ -69,6 +78,7 @@ namespace HomeKitAccessory
         {
             if (!Load())
             {
+                logger.Debug("No pairing database, creating new");
                 DeviceId = GenerateDeviceId();
                 SignKeyPair = Sodium.SignKeypair();
                 Pairings = new List<PairingEntry>();

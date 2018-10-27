@@ -9,6 +9,11 @@ namespace HomeKitAccessory.Net
     {
         [JsonProperty("characteristics")]
         public List<CharacteristicWriteItem> Characteristics {get;set;}
+
+        public override string ToString()
+        {
+            return JObject.FromObject(this).ToString();
+        }
     }
 
     public class CharacteristicWriteItem
@@ -34,6 +39,11 @@ namespace HomeKitAccessory.Net
         public static explicit operator AccessoryCharacteristicId(CharacteristicWriteItem item)
         {
             return new AccessoryCharacteristicId(item.AccessoryId, item.InstanceId);
+        }
+
+        public override string ToString()
+        {
+            return JObject.FromObject(this).ToString();
         }
     }
 }

@@ -1,11 +1,14 @@
 using System;
 using System.Collections.Generic;
 using HomeKitAccessory.Data;
+using NLog;
 
-namespace HomeKitAccessory.Net.PairSetupStates
+namespace HomeKitAccessory.Pairing.PairSetupStates
 {
     class PairSetupState2 : PairSetupState
     {
+        private static Logger logger = LogManager.GetCurrentClassLogger();
+
         private SRPAuth.SRPServer sRPServer;
 
         public PairSetupState2(Server server, SRPAuth.SRPServer sRPServer)
@@ -16,7 +19,7 @@ namespace HomeKitAccessory.Net.PairSetupStates
 
         public override TLVCollection HandlePairSetupRequest(TLVCollection request, out PairSetupState newState)
         {
-            Console.WriteLine("Handling pair setup request in state 2");
+            logger.Debug("Handling pair setup request in state 2");
 
             var state = request.State;
             if (state != 3)
@@ -33,7 +36,7 @@ namespace HomeKitAccessory.Net.PairSetupStates
 
             newState = new PairSetupState4(server, srpKey);
 
-            Console.WriteLine("Sending state 4 response");
+            logger.Debug("Sending state 4 response");
 
             return new TLVCollection() {
                 new TLV(TLVType.State, 4),

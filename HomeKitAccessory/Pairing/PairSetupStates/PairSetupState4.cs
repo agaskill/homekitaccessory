@@ -3,11 +3,14 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using HomeKitAccessory.Data;
+using NLog;
 
-namespace HomeKitAccessory.Net.PairSetupStates
+namespace HomeKitAccessory.Pairing.PairSetupStates
 {
     class PairSetupState4 : PairSetupState
     {
+        private static Logger logger = LogManager.GetCurrentClassLogger();
+
         private byte[] srpKey;
 
         public PairSetupState4(Server server, byte[] srpKey)
@@ -18,7 +21,7 @@ namespace HomeKitAccessory.Net.PairSetupStates
 
         public override TLVCollection HandlePairSetupRequest(TLVCollection request, out PairSetupState newState)
         {
-            Console.WriteLine("Handling pair setup request in state 4");
+            logger.Debug("Handling pair setup request in state 4");
             var state = request.State;
             if (state != 5)
                 throw new InvalidOperationException("Invalid request state " + state);
@@ -34,7 +37,7 @@ namespace HomeKitAccessory.Net.PairSetupStates
                 null, "PS-Msg05",
                 sessionKey);
 
-            Console.WriteLine("Decrypted device data");
+            logger.Debug("Decrypted device data");
 
             var deviceSubTLV = TLVCollection.Deserialize(devicePlainData);
             var deviceId = deviceSubTLV.Find(TLVType.Identifier).DataValue;
@@ -54,7 +57,7 @@ namespace HomeKitAccessory.Net.PairSetupStates
 
             if (!Sodium.VerifyDetached(deviceSignature, iosDeviceInfo.ToArray(), deviceLTPK))
             {
-                Console.WriteLine("Signature verification failed");
+                logger.Error("Signature verification failed");
                 newState = null;
                 return new TLVCollection() {
                     new TLV(TLVType.State, 6),
@@ -62,7 +65,7 @@ namespace HomeKitAccessory.Net.PairSetupStates
                 };
             }
 
-            Console.WriteLine("device signature verified");
+            logger.Debug("device signature verified");
 
             server.AddPairing(Encoding.ASCII.GetString(deviceId), deviceLTPK);
 
@@ -88,7 +91,7 @@ namespace HomeKitAccessory.Net.PairSetupStates
             var encdata = Sodium.Encrypt(subtlv, null,
                 "PS-Msg06", sessionKey);
 
-            Console.WriteLine("Responding with encrypted accessory info");
+            logger.Debug("Responding with encrypted accessory info");
 
             newState = new Initial(server);
 

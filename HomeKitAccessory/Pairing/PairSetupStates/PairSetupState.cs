@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using System;
 using HomeKitAccessory.Data;
 
-namespace HomeKitAccessory.Net.PairSetupStates
+namespace HomeKitAccessory.Pairing.PairSetupStates
 {
     abstract class PairSetupState
     {

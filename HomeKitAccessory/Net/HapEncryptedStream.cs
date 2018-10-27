@@ -1,10 +1,13 @@
 using System;
 using System.IO;
+using NLog;
 
 namespace HomeKitAccessory.Net
 {
     class HapEncryptedStream : Stream
     {
+        private static Logger logger = LogManager.GetCurrentClassLogger();
+
         private Stream baseStream;
         private Sodium.Key readKey;
         private Sodium.Key writeKey;
@@ -42,7 +45,7 @@ namespace HomeKitAccessory.Net
 
         private void ReadNextFrame()
         {
-            Console.WriteLine("Reading next encrypted frame");
+            logger.Debug("Reading next encrypted frame");
             byte[] frameLengthHeader = new byte[2];
             int readLength = baseStream.Read(frameLengthHeader, 0, 2);
             if (readLength == 0) {
@@ -58,7 +61,7 @@ namespace HomeKitAccessory.Net
             }
 
             int frameLength = BitConverter.ToInt16(frameLengthHeader, 0);
-            Console.WriteLine("Frame length is {0}", frameLength);
+            logger.Debug("Frame length is {0}", frameLength);
             byte[] frame = new byte[frameLength + 16];
             int remaining = frame.Length;
             while (remaining > 0) {
@@ -74,7 +77,7 @@ namespace HomeKitAccessory.Net
             byte[] decrypted = Sodium.Decrypt(frame, frameLengthHeader, ReadCounterNonce(), readKey);
             if (decrypted == null)
             {
-                Console.WriteLine("Frame failed decryption");
+                logger.Error("Frame failed decryption");
                 Cleanup();
                 throw new InvalidDataException();
             }

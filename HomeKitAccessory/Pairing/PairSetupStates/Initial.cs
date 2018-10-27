@@ -4,25 +4,29 @@ using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 using HomeKitAccessory.Data;
+using NLog;
 
-namespace HomeKitAccessory.Net.PairSetupStates
+namespace HomeKitAccessory.Pairing.PairSetupStates
 {
     class Initial : PairSetupState
     {
+        private static Logger logger = LogManager.GetCurrentClassLogger();
+
         public Initial(Server server)
             : base(server) {}
         
         public override TLVCollection HandlePairSetupRequest(TLVCollection request, out PairSetupState newState)
         {
+            logger.Debug("Pair setup message received in initial state");
             var state = request.State;
             if (state != 1)
                 throw new InvalidOperationException("Invalid request state");
             var method = (int)request.Find(TLVType.Method).IntegerValue;
             if (method != 0 && method != 1)
                 throw new InvalidOperationException(string.Format("Invalid method {0}", method));
-            var srpServer = new SRPAuth.SRPServer(new PairSetupUserStore(server.SetupCode), SHA512.Create());
+            var srpServer = new SRPAuth.SRPServer(server.UserStore, SHA512.Create());
             var userVerifier = srpServer.ClientHello("Pair-Setup");
-            Console.WriteLine("Sending state 2 response");
+            logger.Debug("Sending state 2 response");
             newState = new PairSetupState2(server, srpServer);
             return new TLVCollection() {
                 new TLV(TLVType.State, 2),
@@ -33,32 +37,27 @@ namespace HomeKitAccessory.Net.PairSetupStates
 
         public override TLVCollection HandlePairVerifyRequest(TLVCollection request, out PairSetupState newState)
         {
-            Console.WriteLine("initial pair verify request received");
+            logger.Debug("initial pair verify request received");
 
             var state = request.State;
             if (state != 1)
                 throw new InvalidOperationException("Invalid request state");
             var deviceSessionPublicKey = new Sodium.Curve25519PublicKey(request.Find(TLVType.PublicKey).DataValue);
-            Console.WriteLine("Device's Curve25519 public key is " + BitConverter.ToString(deviceSessionPublicKey.Data));
 
             var accessorySession = new Sodium.Curve25519Keypair();
             var sharedSecret = accessorySession.SecretKey.ComputeSharedSecret(deviceSessionPublicKey);
-            Console.WriteLine("Generated accessory Curve25519 keypair {0}", accessorySession);
-            Console.WriteLine("Curve25519 shared secret is " + BitConverter.ToString(sharedSecret.Data));
+            logger.Debug("Generated accessory Curve25519 keypair and shared secret");
 
             var accessoryInfo = new MemoryStream();
             accessoryInfo.Write(accessorySession.PublicKey.Data);
             accessoryInfo.Write(Encoding.ASCII.GetBytes(server.PairingId));
             accessoryInfo.Write(deviceSessionPublicKey.Data);
 
-            Console.WriteLine("Signing accessory info with accessory secret key "
-                + BitConverter.ToString(server.PairingDatabase.SignKeyPair.SecretKey.Data));
-
             var accessorySignature = Sodium.SignDetached(
                 accessoryInfo.ToArray(),
                 server.PairingDatabase.SignKeyPair.SecretKey);
 
-            Console.WriteLine("Generated signature " + BitConverter.ToString(accessorySignature));
+            logger.Debug("Generated signature {0}", BitConverter.ToString(accessorySignature));
 
             var subTlv = new TLVCollection() {
                 new TLV(TLVType.Identifier, server.PairingId),
@@ -82,7 +81,7 @@ namespace HomeKitAccessory.Net.PairSetupStates
                 "Control-Write-Encryption-Key",
                 32));
 
-            Console.WriteLine("Encrypting info sub-tlv with derived session key");
+            logger.Debug("Session keys generated");
 
             var encryptedData = Sodium.Encrypt(
                 subTlv, null,

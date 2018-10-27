@@ -4,25 +4,34 @@ using System.Linq;
 using System.Threading.Tasks;
 using HomeKitAccessory.Net;
 using HomeKitAccessory.Core;
+using HomeKitAccessory.Pairing;
+using NLog;
 
 namespace HomeKitAccessory
 {
-    using AppFunc = Func<IDictionary<string,object>, Task>;
-
     public class Server
     {
-        public PairingDatabase PairingDatabase {get; private set;}
-        public ServerInfo ServerInfo {get; private set;}
+        private static Logger logger = LogManager.GetCurrentClassLogger();
+
+        private readonly IBonjourProvider bonjourProvider;
+        private readonly List<Accessory> accessories;
+        private readonly SRPAuth.IUserStore userStore;
+        private readonly PairingDatabase pairingDatabase;
+        private readonly ServerInfo serverInfo;
+
+        private HttpServer server;
+
+        public PairingDatabase PairingDatabase => pairingDatabase;
+        public SRPAuth.IUserStore UserStore => userStore;
         public int ConfigNumber {get;set;}
         public IEnumerable<Accessory> Accessories => accessories.AsReadOnly();
         public bool IsPaired => PairingDatabase.Pairings.Count > 0;
+        public string PairingId => PairingDatabase.DeviceId;
 
-        private IBonjourProvider bonjourProvider;
-        private List<Accessory> accessories;
-        private HttpServer server;
 
         public void Identify()
         {
+            logger.Debug("Server-level identify called");
             Guid identifyType = StandardCharacteristics.Identify.KnownType;
             foreach (var accessory in accessories)
             {
@@ -30,15 +39,20 @@ namespace HomeKitAccessory
             }
         }
 
-        public Server(PairingDatabase pairingDatabase, ServerInfo serverInfo, IBonjourProvider bonjourProvider)
+        public Server(
+            PairingDatabase pairingDatabase,
+            ServerInfo serverInfo,
+            IBonjourProvider bonjourProvider,
+            SRPAuth.IUserStore userStore)
         {
-            PairingDatabase = pairingDatabase;
-            ServerInfo = serverInfo;
             this.bonjourProvider = bonjourProvider;
+            this.pairingDatabase = pairingDatabase;
+            this.userStore = userStore;
+            this.serverInfo = serverInfo;
+
             accessories = new List<Accessory>();
         }
 
-        public string PairingId => PairingDatabase.DeviceId;
 
         public void AddPairing(string deviceId, Sodium.Ed25519PublicKey publicKey)
         {
@@ -51,12 +65,12 @@ namespace HomeKitAccessory
             get
             {
                 var di = new DiscoveryInfo() {
-                    Name = ServerInfo.Name,
-                    Model = ServerInfo.Model,
+                    Name = serverInfo.Name,
+                    Model = serverInfo.Model,
                     ConfigNumber = ConfigNumber,
-                    Port = ServerInfo.Port,
-                    DeviceId = PairingDatabase.DeviceId,
-                    CategoryId = ServerInfo.CategoryId
+                    Port = serverInfo.Port,
+                    DeviceId = pairingDatabase.DeviceId,
+                    CategoryId = serverInfo.CategoryId
                 };
                 if (PairingDatabase.Pairings.Count == 0)
                     di.StatusFlags |= DiscoveryStateFlags.Unpaired;
@@ -64,46 +78,23 @@ namespace HomeKitAccessory
             }
         }
 
-        private string setupCode = "547-07-173";
-
-        public string SetupCode
-        {
-            get
-            {
-                if (setupCode == null)
-                {
-                    var code = "";
-                    var random = new Random();
-                    for (var i = 0; i < 8; i++)
-                    {
-                        code += random.Next(10);
-                        if (i == 2 || i == 4)
-                        {
-                            code += "-";
-                        }
-                    }
-                    setupCode = code;
-                }
-                Console.WriteLine(setupCode);
-                return setupCode;
-            }
-        }
-
         public void RegisterAccessory(Accessory accessory)
         {
+            logger.Debug("Adding accessory {0}", accessory.Id);
             accessories.Add(accessory);
         }
 
         public Task Run()
         {
+            logger.Debug("Server.Run - listening on port {0}", serverInfo.Port);
             bonjourProvider.Advertise(DiscoveryInfo);
             server = new HttpServer(this);
-
-            return server.Listen(ServerInfo.Port);
+            return server.Listen(serverInfo.Port);
         }
 
         public void Stop()
         {
+            logger.Info("Server.Stop - shutting down");
             bonjourProvider.Dispose();
             server.Stop();
         }

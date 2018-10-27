@@ -8,19 +8,21 @@ using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
-using System.Diagnostics;
 using HomeKitAccessory.Core;
 using HomeKitAccessory.Data;
 using HomeKitAccessory.Serialization;
+using NLog;
 
 namespace HomeKitAccessory.Net
 {
     public class CharacteristicHandler : IDisposable
     {
+        private static Logger logger = LogManager.GetCurrentClassLogger();
+
         private Server server;
         private Timer notificationTimer;
-        private Dictionary<AccessoryCharacteristicId, object> pendingNotifications;
         private Action<JObject> eventHandler;
+        private Dictionary<AccessoryCharacteristicId, object> pendingNotifications;
         private Dictionary<AccessoryCharacteristicId, IDisposable> subscriptions;
         private object responseLock;
 
@@ -36,20 +38,21 @@ namespace HomeKitAccessory.Net
 
         public void Dispose()
         {
-            Trace.TraceInformation("Disposing of CharacteristicHandler {0}", this.GetHashCode());
+            logger.Debug("Disposing of CharacteristicHandler {0}", this.GetHashCode());
 
             if (notificationTimer != null)
                 notificationTimer.Dispose();
                 
             foreach (var entry in subscriptions)
             {
-                Trace.TraceInformation("Disposing of subscription to {0}", entry.Key);
+                logger.Debug("Disposing of subscription to {0}", entry.Key);
                 entry.Value.Dispose();
             }
         }
 
         private void CharacteristicChanged(AccessoryCharacteristicId id, object value)
         {
+            logger.Debug("Characteristic {0} changed to {1}", id, value);
             lock (pendingNotifications)
              {
                 pendingNotifications[id] = value;
@@ -183,6 +186,8 @@ namespace HomeKitAccessory.Net
 
         public HapResponse HandleCharacteristicReadRequest(CharacteristicReadRequest request)
         {
+            logger.Debug("HandleCharacteristicReadRequest {0}", request);
+
             var results = new JArray();
 
             var anyErrors = false;
@@ -196,6 +201,7 @@ namespace HomeKitAccessory.Net
                 }
                 catch (HapException ex)
                 {
+                    logger.Warn(ex, "Error reading characteristic {0}", id);
                     anyErrors = true;
                     data = new JObject()
                     {
@@ -206,7 +212,7 @@ namespace HomeKitAccessory.Net
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine(ex);
+                    logger.Error(ex, "Error reading characteristic {0}", id);
                     anyErrors = true;
                     data = new JObject()
                     {
@@ -283,7 +289,7 @@ namespace HomeKitAccessory.Net
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine(ex);
+                    logger.Error(ex);
                     throw new OutOfResourcesException(item.AccessoryId, item.InstanceId);
                 }
             }
@@ -311,6 +317,8 @@ namespace HomeKitAccessory.Net
 
         public HapResponse HandleCharacteristicWriteRequest(CharacteristicWriteRequest request)
         {
+            logger.Debug("HandleCharacteristicWriteRequest {0}", request);
+
             var characteristics = new JArray();
             var anyErrors = false;
 
@@ -327,7 +335,13 @@ namespace HomeKitAccessory.Net
                 }
                 catch (HapException ex)
                 {
+                    logger.Warn(ex, "Error writing {0}", item);
                     result["status"] = ex.ErrorCode;
+                }
+                catch (Exception ex)
+                {
+                    logger.Error(ex, "Error writing {0}", item);
+                    result["status"] = -70407;
                 }
             }
 
@@ -400,6 +414,8 @@ namespace HomeKitAccessory.Net
 
         private void OnNotificationTimer(object state)
         {
+            logger.Debug("OnNotificationTimer");
+
             var characteristics = new JArray();
             lock (pendingNotifications)
             {
@@ -415,6 +431,7 @@ namespace HomeKitAccessory.Net
 
                 if (characteristics.Count == 0)
                 {
+                    logger.Debug("No more notifications to send");
                     notificationTimer.Dispose();
                     notificationTimer = null;
                 }
@@ -425,6 +442,7 @@ namespace HomeKitAccessory.Net
             }
 
             if (characteristics.Count > 0) {
+                logger.Debug("Sending {0} notifications", characteristics.Count);
                 eventHandler.Invoke(new JObject() {
                     { "characteristics", characteristics }
                 });

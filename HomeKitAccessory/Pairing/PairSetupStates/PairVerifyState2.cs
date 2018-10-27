@@ -3,11 +3,14 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using HomeKitAccessory.Data;
+using NLog;
 
-namespace HomeKitAccessory.Net.PairSetupStates
+namespace HomeKitAccessory.Pairing.PairSetupStates
 {
     class PairVerifyState2 : PairSetupState
     {
+        private static Logger logger = LogManager.GetCurrentClassLogger();
+
         private Sodium.Key sessionKey;
         private Sodium.Key controlReadKey;
         private Sodium.Key controlWriteKey;
@@ -32,7 +35,7 @@ namespace HomeKitAccessory.Net.PairSetupStates
 
         public override TLVCollection HandlePairVerifyRequest(TLVCollection request, out PairSetupState newState)
         {
-            Console.WriteLine("pair verify message received in state 2");
+            logger.Debug("pair verify message received in state 2");
             var state = request.State;
             if (state != 3)
                 throw new InvalidOperationException("Unexpected state " + state);
@@ -42,7 +45,7 @@ namespace HomeKitAccessory.Net.PairSetupStates
                 "PV-Msg03", sessionKey);
             if (plainData == null)
             {
-                Console.WriteLine("Data did not decrypt");
+                logger.Error("Data did not decrypt");
                 newState = new Initial(server);
                 return new TLVCollection() {
                     new TLV(TLVType.State, 4),
@@ -52,12 +55,12 @@ namespace HomeKitAccessory.Net.PairSetupStates
 
             var deviceData = TLVCollection.Deserialize(plainData);
             var devicePairingId = deviceData.Find(TLVType.Identifier).StringValue;
-            Console.WriteLine("Device is " + devicePairingId);
+            logger.Debug("Device is " + devicePairingId);
 
             var devicePublic = server.PairingDatabase.FindKey(devicePairingId);
             if (devicePublic == null)
             {
-                Console.WriteLine("Unknown device");
+                logger.Error("Unknown device");
                 newState = new Initial(server);
                 return new TLVCollection() {
                     new TLV(TLVType.State, 4),
@@ -73,7 +76,7 @@ namespace HomeKitAccessory.Net.PairSetupStates
 
             if (!Sodium.VerifyDetached(deviceSignature, deviceInfo.ToArray(), devicePublic))
             {
-                Console.WriteLine("Signature validation failed");
+                logger.Error("Signature validation failed");
                 newState = new Initial(server);
                 return new TLVCollection() {
                     new TLV(TLVType.State, 4),
@@ -86,7 +89,7 @@ namespace HomeKitAccessory.Net.PairSetupStates
                 controlReadKey,
                 controlWriteKey);
 
-            Console.WriteLine("Pair verify complete");
+            logger.Debug("Pair verify complete");
 
             return new TLVCollection()
             {

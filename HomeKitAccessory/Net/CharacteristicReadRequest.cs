@@ -11,5 +11,10 @@ namespace HomeKitAccessory.Net
         public bool IncludePerms {get;set;}
         public bool IncludeType {get;set;}
         public bool IncludeEvent {get;set;}
+
+        public override string ToString()
+        {
+            return Newtonsoft.Json.Linq.JObject.FromObject(this).ToString();
+        }
     }
 }
