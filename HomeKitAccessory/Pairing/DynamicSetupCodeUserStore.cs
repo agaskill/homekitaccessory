@@ -10,6 +10,8 @@ namespace HomeKitAccessory.Pairing
         private static Logger logger = LogManager.GetCurrentClassLogger();
 
         private Action<string> displaySetupCode;
+        private string setupCode;
+        private UserVerifier verifier;
 
         public static string GenerateCode()
         {
@@ -35,17 +37,20 @@ namespace HomeKitAccessory.Pairing
             if (identity != "Pair-Setup")
                 throw new ArgumentException("Only Pair-Setup identity supported", nameof(identity));
             
-            var setupCode = GenerateCode();
-
-            logger.Info("Generated setup code {0}", setupCode);
+            if (setupCode == null)
+            {
+                setupCode = GenerateCode();
+                logger.Info("Generated setup code {0}", setupCode);
+                verifier = UserVerifier.Create(
+                    identity,
+                    setupCode,
+                    SRPGroupParameters.Rfc5054_3072,
+                    SHA512.Create());
+            }
             
             displaySetupCode(setupCode);
 
-            return UserVerifier.Create(
-                identity,
-                setupCode,
-                SRPGroupParameters.Rfc5054_3072,
-                SHA512.Create());
+            return verifier;
         }
     }
 }

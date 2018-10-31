@@ -13,5 +13,9 @@ namespace HomeKitAccessory
         public const byte RetryDelay = 0x08;
         public const byte Certificate = 0x09;
         public const byte Signature = 0x0A;
+        public const byte Permissions = 0x0B;
+        public const byte FragmentData = 0x0C;
+        public const byte FragmentLast = 0x0D;
+        public const byte Separator = 0xFF;
     }
 }

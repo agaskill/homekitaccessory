@@ -267,6 +267,10 @@ namespace HomeKitAccessory.Net
             {
                 HandlePairVerify(req, res);
             }
+            else if (req.Path == "/pairings")
+            {
+                HandlePairings(req, res);
+            }
             else if (req.Path == "/accessories")
             {
                 HandleAccessoryDatabase(req, res);
@@ -329,6 +333,68 @@ namespace HomeKitAccessory.Net
             }
 
             SetResponseTLV(response, tlvResponse);
+        }
+
+        private void HandlePairings(HttpRequest request, HttpResponse response)
+        {
+            var tlvRequest = GetRequestTLV(request);
+            var method = tlvRequest.Find(TLVType.Method).IntegerValue;
+            logger.Debug("Pairings method is {0}", method);
+            switch (method)
+            {
+                case 3:
+                    HandlePairingsAdd(tlvRequest, response);
+                    break;
+                case 4:
+                    HandlePairingsRemove(tlvRequest, response);
+                    break;
+                case 5:
+                    HandlePairingsList(tlvRequest, response);
+                    break;
+                default:
+                    throw new NotImplementedException();
+            }
+        }
+
+        private void HandlePairingsAdd(TLVCollection req, HttpResponse response)
+        {
+            var deviceId = req.Find(TLVType.Identifier).StringValue;
+            var ltpk = req.Find(TLVType.PublicKey).DataValue;
+            var perms = req.Find(TLVType.Permissions);
+            logger.Debug("Added device permissions is {0}", perms.IntegerValue);
+            server.PairingDatabase.AddPairing(deviceId, new Sodium.Ed25519PublicKey(ltpk));
+            SetResponseTLV(response, new TLVCollection()
+            {
+                new TLV(TLVType.State, 2)
+            });
+        }
+
+        private void HandlePairingsRemove(TLVCollection req, HttpResponse response)
+        {
+            var deviceId = req.Find(TLVType.Identifier).StringValue;
+            server.RemovePairing(deviceId);
+            SetResponseTLV(response, new TLVCollection
+            {
+                new TLV(TLVType.State, 2)
+            });
+        }
+
+        private void HandlePairingsList(TLVCollection req, HttpResponse response)
+        {
+            var list = new TLVCollection();
+            list.Add(new TLV(TLVType.State, 2));
+            var i = 0;
+            foreach (var pairing in server.PairingDatabase.Pairings)
+            {
+                if (i > 0) {
+                    list.Add(new TLV(TLVType.Separator, new byte[0]));
+                }
+                list.Add(new TLV(TLVType.Identifier, pairing.DeviceId));
+                list.Add(new TLV(TLVType.PublicKey, pairing.PublicKey.Data));
+                list.Add(new TLV(TLVType.Permissions, 1));
+                i++;
+            }
+            SetResponseTLV(response, list);
         }
 
         private const string HapContentType = "application/hap+json";

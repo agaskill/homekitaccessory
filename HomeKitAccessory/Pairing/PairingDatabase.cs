@@ -39,6 +39,16 @@ namespace HomeKitAccessory.Pairing
             Save();
         }
 
+        public void RemovePairing(string deviceId)
+        {
+            logger.Info("Removing pairing for {0}", deviceId);
+
+            if (Pairings.RemoveAll(p => p.DeviceId == deviceId) > 0)
+            {
+                Save();
+            }
+        }
+
         public Sodium.Ed25519PublicKey FindKey(string deviceId)
         {
             return Pairings.Find(p => p.DeviceId == deviceId)?.PublicKey;

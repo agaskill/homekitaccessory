@@ -60,6 +60,12 @@ namespace HomeKitAccessory
             bonjourProvider.Advertise(DiscoveryInfo);
         }
 
+        public void RemovePairing(string deviceId)
+        {
+            PairingDatabase.RemovePairing(deviceId);
+            bonjourProvider.Advertise(DiscoveryInfo);
+        }
+
         public DiscoveryInfo DiscoveryInfo
         {
             get
